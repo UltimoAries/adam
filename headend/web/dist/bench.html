@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice bench · ADAM</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <p><a href="/">← ADAM &middot; Automation Display and Mapping</a></p>
+    <header class="masthead">
+      <div><span class="eyebrow">ADAM &middot; AUDIO LAB</span><h1>Voice bench<span class="dot">.</span></h1>
+        <p>Record on the box. Listen here. Check the words.</p></div>
+      <div class="server-state"><span class="status-light"></span><span id="serverState">Connecting locally…</span><small>English · runs on this laptop</small></div>
+    </header>
+
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+
+    <section class="device panel" aria-labelledby="deviceTitle">
+      <div class="device-label"><span class="device-icon" aria-hidden="true">◉</span><div><h2 id="deviceTitle">The round box</h2><p id="deviceState">Checking USB connection…</p></div></div>
+      <div class="device-actions">
+        <button id="record" class="primary"><span aria-hidden="true">●</span> Record 8 sec</button>
+        <button id="fetchClip">Fetch latest clip</button>
+        <button id="replayBox">Replay latest on box</button>
+        <button id="stop" class="subtle">Stop</button>
+      </div>
+      <div class="device-bottom"><span id="deviceDetails">USB COM6</span><span id="recordState">Recording starts only when you press Record.</span><button id="refreshDevice" class="text-button">Refresh connection</button></div>
+    </section>
+
+    <div class="workspace">
+      <aside class="panel library" aria-labelledby="libraryTitle">
+        <div class="section-heading"><h2 id="libraryTitle">Test clips</h2><span id="clipCount" class="count">0</span></div>
+        <label id="dropzone" class="upload" for="fileInput" tabindex="0" role="button"><span class="upload-mark" aria-hidden="true">↑</span><strong>Upload a WAV</strong><span>Drop here or choose a file</span><small>PCM 16-bit · mono/stereo · up to 15 sec</small></label>
+        <input id="fileInput" type="file" accept=".wav,audio/wav" multiple hidden>
+        <div id="clipList" class="clip-list"><p class="empty-list">Your recordings will appear here.</p></div>
+        <label class="check"><input id="autoText" type="checkbox" checked> Transcribe after capture or upload</label>
+        <p class="storage-note">Test clips are saved locally. Delete them when finished.</p>
+      </aside>
+
+      <div class="review-column">
+        <section class="panel player-panel" aria-labelledby="clipTitle">
+          <div class="section-heading"><span class="eyebrow">LISTEN & COMPARE</span><a id="download" class="text-button" hidden>Download original</a></div>
+          <h2 id="clipTitle" class="clip-title">Choose a clip to begin</h2>
+          <p id="clipMeta" class="muted">Fetch a recording from the box or upload a WAV file.</p>
+          <canvas id="waveform" width="1000" height="176" aria-label="Audio waveform"></canvas>
+          <div class="playback-options">
+            <label>Listen to<select id="channel"><option value="0">Original stereo</option></select></label>
+            <label>Review gain<select id="gain"><option value="0">Original · 0 dB</option><option value="12">+12 dB</option><option value="24">+24 dB</option><option value="30">+30 dB</option></select></label>
+          </div>
+          <audio id="player" controls preload="none" aria-label="Play selected clip on this laptop"></audio>
+          <div class="levels" id="levels"><div><small>RAW LEVEL</small><strong>—</strong></div><div><small>RAW PEAK</small><strong>—</strong></div><div><small>CLIPPED SAMPLES</small><strong>—</strong></div></div>
+          <p class="help">Playback above uses this laptop. “Replay latest on box” uses the box’s current recording. Review gain changes only the listening copy.</p>
+        </section>
+
+        <section class="panel transcript-panel" aria-labelledby="transcriptTitle">
+          <div class="section-heading"><h2 id="transcriptTitle">Speech to text</h2><span id="modelState" class="model-tag">base.en · local CPU</span></div>
+          <div class="transcribe-options"><label>Microphone<select id="sttChannel"><option value="1">Microphone 1</option></select></label><label class="check"><input type="checkbox" id="boost" checked> Boost quiet input</label><button id="transcribe" class="primary">Transcribe clip</button><button id="cancelJob" class="subtle" hidden>Cancel</button></div>
+          <div id="transcript" class="transcript" role="status" aria-live="polite">The transcript will appear here after recording or upload.</div>
+          <div class="transcript-footer"><span id="jobTiming">Transcribes completed clips; live streaming comes later.</span><button id="copyText" class="text-button" hidden>Copy text</button></div>
+        </section>
+        <div class="footer-actions"><span>Local audio → local text → future device APIs</span><button id="deleteClip" class="text-button danger" disabled>Delete selected clip</button></div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

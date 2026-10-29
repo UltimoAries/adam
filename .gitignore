@@ -1,0 +1,64 @@
+# Build outputs and installed dependencies (recreated from source/lock files)
+/firmware/build/
+/firmware/sdkconfig
+/firmware/sdkconfig.old
+/firmware/managed_components/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+node_modules/
+
+# Local accounts, device keys, credentials, speech, and model installations
+/headend/data/
+/headend/recordings/
+/headend/models/
+/headend/config.local.toml
+/headend/.browser-test/
+.env
+.env.*
+!.env.example
+*.local.toml
+*.local.json
+*.pem
+*.key
+*.pfx
+*.p12
+*.sqlite*
+*.db
+*.db-*
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.webm
+
+# Local diagnostics and recovery copies; retain the directory instructions
+/artifacts/*
+!/artifacts/README.md
+/backups/
+*.log
+*.pid
+
+# Training data, caches, and large model outputs
+/training/**/work/
+/training/**/.venv*/
+/training/**/datasets/
+/training/**/checkpoints/
+/training/**/results/
+*.onnx
+*.onnx_data
+*.safetensors
+*.gguf
+*.pt
+*.pth
+
+# Per-machine editor/OS files
+/.vscode/
+/.idea/
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp

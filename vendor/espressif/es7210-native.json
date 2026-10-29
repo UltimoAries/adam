@@ -1,0 +1,8 @@
+{
+  "repository": "espressif/esp-adf",
+  "revision": "2047df4eacbfef50dfa39c9205d28c29618214e8",
+  "path": "components/esp_codec_dev/device/es7210/es7210.c",
+  "url": "https://raw.githubusercontent.com/espressif/esp-adf/2047df4eacbfef50dfa39c9205d28c29618214e8/components/esp_codec_dev/device/es7210/es7210.c",
+  "sha256": "8c741993683579ffbffd05a227533f4a54d086921de8ed99ff6c12f6574d5921",
+  "license": "Apache-2.0"
+}

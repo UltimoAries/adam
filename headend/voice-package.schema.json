@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "Asset": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "sha256"
+      ],
+      "title": "Asset",
+      "type": "object"
+    },
+    "License": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "file": {
+          "const": "LICENSE.txt",
+          "default": "LICENSE.txt",
+          "title": "File",
+          "type": "string"
+        },
+        "attribution": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Attribution",
+          "type": "string"
+        },
+        "source_url": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Source Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "attribution"
+      ],
+      "title": "License",
+      "type": "object"
+    },
+    "Settings": {
+      "additionalProperties": false,
+      "properties": {
+        "speaker_id": {
+          "default": 0,
+          "maximum": 63,
+          "minimum": 0,
+          "title": "Speaker Id",
+          "type": "integer"
+        },
+        "length_scale": {
+          "default": 1,
+          "maximum": 2,
+          "minimum": 0.5,
+          "title": "Length Scale",
+          "type": "number"
+        },
+        "noise_scale": {
+          "default": 0.667,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Noise Scale",
+          "type": "number"
+        },
+        "noise_w_scale": {
+          "default": 0.8,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Noise W Scale",
+          "type": "number"
+        }
+      },
+      "title": "Settings",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "id": {
+      "pattern": "^[a-z][a-z0-9_-]{2,47}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}(?:-[a-z0-9.-]{1,20})?$",
+      "title": "Version",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Description",
+      "type": "string"
+    },
+    "author": {
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Author",
+      "type": "string"
+    },
+    "engine": {
+      "const": "piper-onnx",
+      "default": "piper-onnx",
+      "title": "Engine",
+      "type": "string"
+    },
+    "language": {
+      "default": "en-US",
+      "enum": [
+        "en-US",
+        "en-GB",
+        "en-AU",
+        "en-CA"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "model": {
+      "$ref": "#/$defs/Asset"
+    },
+    "config": {
+      "$ref": "#/$defs/Asset"
+    },
+    "license": {
+      "$ref": "#/$defs/License"
+    },
+    "settings": {
+      "$ref": "#/$defs/Settings"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "name",
+    "author",
+    "model",
+    "config",
+    "license"
+  ],
+  "title": "VoiceManifest",
+  "type": "object"
+}

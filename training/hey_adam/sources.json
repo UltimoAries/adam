@@ -1,0 +1,78 @@
+{
+  "research_date": "2026-10-28",
+  "repositories": {
+    "OHF-Voice/micro-wake-word": {
+      "revision": "4665173cd35f1cff9a61e06fc427f124766c488e",
+      "branch": "main",
+      "files": [
+        "README.md",
+        "notebooks/basic_training_notebook.ipynb",
+        "pyproject.toml",
+        "setup.py"
+      ]
+    },
+    "rhasspy/piper-sample-generator": {
+      "revision": "2971426a55072f7d22fec416ca7800df8bd23207",
+      "branch": "master",
+      "files": [
+        "README.md",
+        "pyproject.toml"
+      ]
+    },
+    "esphome/micro-wake-word-models": {
+      "revision": "40ff33f57f8fc6ad71a75ef085abbf742495b225",
+      "branch": "main",
+      "files": [
+        "README.md"
+      ]
+    }
+  },
+  "local_host": {
+    "cpu": "Intel i7-1270P",
+    "cores": 12,
+    "threads": 16,
+    "ram_gib": 31.7,
+    "gpu": "Intel Iris Xe; no NVIDIA GPU",
+    "free_disk_gib_at_check": 99.8,
+    "docker_server": "29.7.2",
+    "wsl2": "docker-desktop running"
+  },
+  "other_host": {
+    "gpu_reported_by_user": "NVIDIA RTX 4070 Super",
+    "accessed": false
+  },
+  "downloaded_reference_files": [
+    {
+      "path": "upstream\\micro-wake-word-basic_training_notebook.ipynb",
+      "sha256": "c3b5e1eb339ffd7893209dfa1ca0373abcdd54378d4533f109601cead87a6726"
+    },
+    {
+      "path": "upstream\\micro-wake-word-LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "upstream\\micro-wake-word-setup.py",
+      "sha256": "839054a772178201e7c3b210136f98d6b3f33da39d5d40cbbff1ce5a8f151251"
+    },
+    {
+      "path": "upstream\\mixednet.py",
+      "sha256": "64ba771d4e523170e85f9f5921c94c6a61c4609da714707582a8d631db2b595d"
+    },
+    {
+      "path": "upstream\\model_train_eval.py",
+      "sha256": "aba63164ec6b5fa878c9486d3a4117f9e89b1bfd6995d0c3156488617fb207d0"
+    },
+    {
+      "path": "upstream\\piper-sample-generator-LICENSE.md",
+      "sha256": "13746d509d74e55ea2265fbef204bb7cdbf84a8315b0207e988326cb54387028"
+    },
+    {
+      "path": "upstream\\piper-sample-generator-pyproject.toml",
+      "sha256": "b35707276beb60e9496210fc6a406da2cc5e2334c0f64d7a25d6160f1d424c6b"
+    },
+    {
+      "path": "upstream\\piper-sample-generator-README.md",
+      "sha256": "89479783b6b5d423a48c25f2cd99a20f0413870134237a71e2db9338270e69af"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.pdf binary
+*.tflite binary
+*.pcm binary
+# Preserve upstream bytes and the recorded source checksums.
+vendor/** -text
+headend/web/dist/vendor/** -text
+training/hey_adam/upstream/** -text

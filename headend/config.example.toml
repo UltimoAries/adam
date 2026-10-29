@@ -1,0 +1,41 @@
+# Proposed deployment settings. The CLI currently accepts --model-dir only;
+# a network service/config loader will be added after the microphone/wake proof.
+[device]
+id = "round-eye-01"
+sample_rate = 16000
+channels = 1
+sample_bits = 16
+frame_ms = 20
+pre_roll_ms = 500
+max_utterance_seconds = 15
+
+[wake]
+target_phrase = "Hey Adam"
+engine_candidate = "microWakeWord"
+# There is no trained Hey Adam model installed yet. This is a requirement,
+# not a text setting that changes a model's recognition vocabulary.
+custom_model_verified = false
+stock_model_for_bringup_only = true
+
+[headend]
+host = "127.0.0.1"
+language = "en"
+cloud_fallback = false
+retain_audio = false
+retain_transcripts = false
+max_active_devices = 1
+max_transcription_jobs = 1
+
+[stt]
+provider = "faster-whisper"
+initial_model_candidate = "base.en"
+quality_comparison_candidate = "small.en"
+device = "cpu"
+compute_type = "int8"
+cpu_threads = 4
+model_directory = "models/stt/base.en"
+
+[conversation]
+initial_mode = "listen_then_reply"
+home_assistant_enabled = false
+direct_device_adapters_enabled = false

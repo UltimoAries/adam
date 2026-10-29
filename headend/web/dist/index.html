@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADAM · Automation Display and Mapping</title>
+<link rel="stylesheet" href="/assets/fleet.css"><script src="/assets/fleet.js" defer></script>
+<link rel="stylesheet" href="/assets/monitor-map.css">
+<script type="importmap">{"imports":{"three":"/assets/vendor/three/three.module.js"}}</script>
+<script type="module" src="/assets/monitor-map.js"></script>
+</head><body><main>
+<header><div class="adam-brand"><span class="eyebrow">YOUR HOME, CONNECTED LOCALLY</span><h1>ADAM<span>.</span></h1><p>Automation Display and Mapping</p></div><div class="header-right"><span id="connection" class="badge">Connecting</span><a href="/queries" id="queriesLink" hidden>Information &amp; sources &#8599;</a><a href="/voices" id="voicesLink" hidden>Voices ↗</a><a href="/bench" id="benchLink" hidden>Audio bench ↗</a><button id="logout" class="quiet" hidden>Sign out</button></div></header>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<section id="auth" class="panel auth" hidden><span class="eyebrow">LOCAL HEAD-END</span><h2 id="authTitle">Sign in</h2><p id="authHelp">Use your local administrator account.</p><form id="loginForm"><label>Username<input id="username" autocomplete="username" required maxlength="40" value="admin"></label><label>Password<input id="password" type="password" autocomplete="current-password" required maxlength="128"></label><button id="login" class="primary" type="submit">Sign in</button></form></section>
+<div id="dashboard" hidden>
+<section class="panel monitor-map" aria-labelledby="mapTitle">
+  <div class="section-title"><div><span class="eyebrow">A VIEW OF YOUR HOME</span><h2 id="mapTitle">Monitor Map</h2></div><span class="badge">Sample floor plan</span></div>
+  <p class="help">Explore a sample home. Your house model and room devices will live here.</p>
+  <div class="map-toolbar" role="group" aria-label="Map controls">
+    <div class="map-modes"><button id="mapOrbit" aria-pressed="true" disabled>Orbit &amp; tilt</button><button id="mapPan" aria-pressed="false" disabled>Pan</button></div>
+    <div class="map-views"><button id="mapZoomIn" aria-label="Zoom in" disabled>+</button><button id="mapZoomOut" aria-label="Zoom out" disabled>&minus;</button><button id="mapTop" disabled>Top view</button><button id="mapReset" disabled>Reset view</button></div>
+  </div>
+  <div id="mapViewport" class="map-viewport">
+    <div id="mapFallback" class="map-fallback" role="status">Loading the sample house viewer&hellip;</div>
+    <span class="map-caption" aria-hidden="true">SAMPLE HOME <span>/</span> LEVEL 01</span>
+  </div>
+  <div class="map-foot"><p id="mapHelp">Drag to orbit and tilt. Right-drag to pan. Scroll to zoom. Touch: one finger to orbit, two to pan or zoom.</p><span>Preview &middot; no devices placed</span></div>
+  <details class="map-keyboard"><summary>Keyboard controls</summary><p>Focus the map with Tab. Arrow keys pan; Shift + arrows orbit and tilt. + / &minus; zoom, T shows the top view, and R resets the view.</p></details>
+</section>
+<div class="overview"><div><strong id="onlineCount">0</strong><span>units online</span></div><div><strong id="pendingCount">0</strong><span>pages pending</span></div><div><strong id="sessionCount">0</strong><span>audio sessions</span></div><p>English speech recognition and speech synthesis run on this laptop.</p></div>
+<div class="layout"><aside>
+<section class="panel units"><div class="section-title"><h2>Rooms & units</h2><button id="selectAll" class="quiet">Select online</button></div><p class="help">Choose where your message should play.</p><div id="units" class="unit-list"></div>
+<details><summary>Add a USB-connected unit</summary><form id="pairForm"><label>Unit name<input id="unitName" value="Round box" maxlength="48" required></label><label>Head-end LAN address<input id="pairUrl" placeholder="http://192.168.1.10:8765" required></label><button class="secondary" type="submit">Pair over USB</button><p class="help">Saves the device key and server address over USB. Its saved Wi-Fi network stays in use.</p></form></details></section>
+<div class="local-note"><span class="status-dot"></span><div><strong>Local speech &amp; paging</strong><p>Pages expire after five minutes. Wake-word capability is reported by each unit.</p></div></div></aside>
+<div class="content">
+<section class="panel compose"><div class="section-title"><div><span class="eyebrow">MAKE AN ANNOUNCEMENT</span><h2>Send a page</h2></div><span class="badge">5 min expiry</span></div>
+<div class="tabs" role="group" aria-label="Message type"><button id="textTab" class="active" aria-pressed="true">Type a message</button><button id="voiceTab" aria-pressed="false">Record your voice</button></div>
+<div id="textCompose"><label for="message">Message to read aloud</label><textarea id="message" maxlength="200" rows="3" placeholder="Dinner’s ready. Come to the kitchen."></textarea><div class="page-voice"><label>Voice<select id="pageVoice"><option value="">Default voice</option></select></label><a href="/voices">Manage voices ↗</a></div><p class="help">Keep it short: spoken messages can be up to 15 seconds.</p></div>
+<div id="voiceCompose" hidden><div class="record-tools"><button id="recordVoice" class="secondary">● Record voice</button><span id="recordTimer">Up to 15 seconds</span><label class="file-button">Choose WAV<input id="voiceFile" type="file" accept=".wav,audio/wav" hidden></label></div><audio id="voicePreview" controls hidden aria-label="Preview your voice message"></audio><p class="help" id="voiceHelp">Preview your recording before sending. Recording uses this laptop’s microphone.</p></div>
+<div class="send-row"><span id="recipientSummary">Select one or more units</span><button id="sendPage" class="primary" disabled>Send message →</button></div></section>
+<section class="panel"><div class="section-title"><div><span class="eyebrow">INCOMING VOICE</span><h2>Listening & transcripts</h2></div><span id="recognizer" class="badge">Local English</span></div><p class="help">Use Listen on a unit to test Wi-Fi streaming. An installed on-device wake model will start the same audio session.</p><div id="sessions" class="history"></div></section>
+<section class="panel"><div class="section-title"><h2>Message delivery</h2><span class="muted">Confirmed by each unit</span></div><div id="pages" class="history"></div></section>
+</div></div><footer><span id="serverUrl"></span><span>Local network prototype · no device controls connected yet</span></footer></div>
+</main></body></html>

@@ -1,0 +1,283 @@
+[
+  {
+    "repository": "0xD34D/micro_wake_word_standalone",
+    "revision": "dc7b5ebd020b98b26b9a0d7f25cb36619182dd7a",
+    "directory": "vendor/wake/micro_wake_word",
+    "files": [
+      {
+        "path": "CMakeLists.txt",
+        "sha256": "a73364357ce61a9a8d98c00dad103bc168cea6ac1bc1731e6199529dcb8c0bd8"
+      },
+      {
+        "path": "LICENSE.md",
+        "sha256": "877d2ab3c3ed5bd3d3ef167f687b12ad015352cffdbe7cc1dc4f2c11590f7abc"
+      },
+      {
+        "path": "README.md",
+        "sha256": "5ad515ec3d55504dc5927c2cabab1820c2f925f8e17afdcf63ebe4739f6ed21b"
+      },
+      {
+        "path": "esphome/components/i2s_audio/i2s_audio.cpp",
+        "sha256": "f368b8a0408bf94008181faac47ef903700a09f0714fc1787f522d7e8a61d4cd"
+      },
+      {
+        "path": "esphome/components/i2s_audio/microphone/i2s_audio_microphone.cpp",
+        "sha256": "37fb0c0e9b242ee40d8c37973de37fc62f77a91a5950a9234bc7572741e837c4"
+      },
+      {
+        "path": "esphome/components/micro_wake_word/micro_wake_word.cpp",
+        "sha256": "38c43304cc3357933e80162bb4ff445893e58d7a61a2de4568d613feb5774831"
+      },
+      {
+        "path": "esphome/components/micro_wake_word/streaming_model.cpp",
+        "sha256": "baf77bf344e40bf9acc02086d5c1a8c4f36cc75d7ab2b8d042bae375e2dde679"
+      },
+      {
+        "path": "esphome/core/component.cpp",
+        "sha256": "93fa58a13b7073c3c0e5bc1c6af0c8ef591fdc2fc9580f1ad322986c5b63242d"
+      },
+      {
+        "path": "esphome/core/helpers.cpp",
+        "sha256": "82c5a28519660abad55e00a34147a9aaed701c75e0fc3e38e645dd7256effc09"
+      },
+      {
+        "path": "esphome/core/ring_buffer.cpp",
+        "sha256": "39d8d5c4dacecd77393bb5b15515233b6d4b3e928f5bbc8ff1181995f311b81a"
+      },
+      {
+        "path": "idf_component.yml",
+        "sha256": "f39c6f14787614e36148ed93a1d9a64db65251dabd399b8ff35de2b68d6476c1"
+      },
+      {
+        "path": "include/esphome/components/i2s_audio/i2s_audio.h",
+        "sha256": "f5a94be33c14142addc7151cab40c7127954dc632a6e1783841a06ccf87261ab"
+      },
+      {
+        "path": "include/esphome/components/i2s_audio/microphone/i2s_audio_microphone.h",
+        "sha256": "9d3a1f4ef595f3c037433eed213391f153651bd7d9f327af5e8b9175ccd1c11c"
+      },
+      {
+        "path": "include/esphome/components/micro_wake_word/micro_wake_word.h",
+        "sha256": "9e83fcf11ea1c7105faa88b9e10f42389c2d1dfda06364f0cfb9acffe70d3069"
+      },
+      {
+        "path": "include/esphome/components/micro_wake_word/preprocessor_settings.h",
+        "sha256": "7f3e7ec1f6a1efcb169d8fa2357b86bba2b94e96c67de4027203c874f04d3e0e"
+      },
+      {
+        "path": "include/esphome/components/micro_wake_word/streaming_model.h",
+        "sha256": "7ff5aedbe1aaca33ef0ea4820045ae1a2a2af9bc9294ebb470e909d0fcee8a90"
+      },
+      {
+        "path": "include/esphome/components/microphone/microphone.h",
+        "sha256": "e757c42cbaf260872ab10e809621f58085d35bec5b5a45ea803811a2666620ba"
+      },
+      {
+        "path": "include/esphome/core/component.h",
+        "sha256": "d933051108f6960eebcc733e6ba50b2f00f31d52b4fcba5a1c6e66be9c507bdc"
+      },
+      {
+        "path": "include/esphome/core/helpers.h",
+        "sha256": "dbc308d7a1c19b0b6a1a562ce2cb97b5b68f8e5d0945a429ba7ee8c109a70e00"
+      },
+      {
+        "path": "include/esphome/core/optional.h",
+        "sha256": "f594d94d9a5671f975a2dd25c70a587f708a7cb6f7374c1bf4b351d9fa4bcba9"
+      },
+      {
+        "path": "include/esphome/core/ring_buffer.h",
+        "sha256": "9c7ac7e8bc89120756df645291de8f74d7cb2980a06665c66889e04235f4ef45"
+      }
+    ]
+  },
+  {
+    "repository": "0xD34D/ESPMicroSpeechFeatures",
+    "revision": "c2a077454c24d71fc84be377bb6e28725f05c333",
+    "directory": "vendor/wake/micro_speech_features",
+    "files": [
+      {
+        "path": "CMakeLists.txt",
+        "sha256": "49a853a7bfc714c84b42051f3e2ad69246ef05c1cfd61c09ecefce2ded8acc35"
+      },
+      {
+        "path": "LICENSE",
+        "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+      },
+      {
+        "path": "README.md",
+        "sha256": "807d9f9c95b0347afbb116b59bca3e3ed7b8dca107677965dea7ab8b50a7342d"
+      },
+      {
+        "path": "idf_component.yml",
+        "sha256": "5f54e5a4da37525fb64d888627e6c1d3b083519a44c15889f00bba613e6c7d21"
+      },
+      {
+        "path": "include/frontend.h",
+        "sha256": "4cceb5b319dccbb45fd52fe105f1a37a73631bd68b6f73ad9fda52a3c16154ec"
+      },
+      {
+        "path": "include/frontend_util.h",
+        "sha256": "3aeb153ac431ff6b645882b0653015596ed921829ccf575bdad4603ce0802df5"
+      },
+      {
+        "path": "library.json",
+        "sha256": "d33ecd3e41960de0797a0d7ef0cac7f09b5b2179a0f1873971bc0284d1c9e945"
+      },
+      {
+        "path": "src/_kiss_fft_guts.h",
+        "sha256": "ca85e03b9e6ff14a514de745738be2c37550a370437a6bb4d088970a657de1c9"
+      },
+      {
+        "path": "src/bits.h",
+        "sha256": "10251fd508996bf0a3f0af34eed093d3edb83124204c1504db39f35987a015a0"
+      },
+      {
+        "path": "src/fft.c",
+        "sha256": "541e5fe21d3d35580b4049cde49244729f20dfb5745a8928218516ae760d2319"
+      },
+      {
+        "path": "src/fft.h",
+        "sha256": "7d3c5fb8c09185ef3ea9a7dc8831b3d9197235fb02a02b59172b04cc44aa3a2f"
+      },
+      {
+        "path": "src/fft_util.c",
+        "sha256": "e670eb8ac5711bede0fc9d7df2e7eb0908f977e83cc40f9dc618a109384cb6f4"
+      },
+      {
+        "path": "src/fft_util.h",
+        "sha256": "6db6948df4a6335a98716f6f48d5d8d0de6b9631e7f309628c2981660a275b9c"
+      },
+      {
+        "path": "src/filterbank.c",
+        "sha256": "428a5f63005bf8473c5fb4246f408f8455ec185d4e3123ddf62dbeb61bc9de3a"
+      },
+      {
+        "path": "src/filterbank.h",
+        "sha256": "ee44c3eef219d5718ccdb96c3db5669bab8e11d108ede9c301ed9dab19d4fbf1"
+      },
+      {
+        "path": "src/filterbank_util.c",
+        "sha256": "947a64414dfe3fcc1cc1b307cf9b16e03ef62a96c7216bea1b52689bc47a17ad"
+      },
+      {
+        "path": "src/filterbank_util.h",
+        "sha256": "c6be518afe607d5f5e2f6a9bbe20658948d057a35437f31769abc4b488928eba"
+      },
+      {
+        "path": "src/frontend.c",
+        "sha256": "dc72e21bca9a1aa094803ab687a86871fa98781668a3d69cc5f4c3af029829c7"
+      },
+      {
+        "path": "src/frontend_util.c",
+        "sha256": "980fbfc85334475c31c9a41cb12e18357c7fc7b4502188785c9e4c79e88902d7"
+      },
+      {
+        "path": "src/kiss_fft.c",
+        "sha256": "48e99a0d353b3bdcc4e80bebb83311c8888c8878f6c0f4b0dd78474761aadd3a"
+      },
+      {
+        "path": "src/kiss_fft.h",
+        "sha256": "f720cab70ff3ae28fa3bc3cdaa82a34062b481152ff4cc617a295bb68776379f"
+      },
+      {
+        "path": "src/kiss_fftr.c",
+        "sha256": "bd4f2f2c9c5037f0dda187185d843844e3d057790faec7b538f1c61b65b348f7"
+      },
+      {
+        "path": "src/kiss_fftr.h",
+        "sha256": "097aa834da6794e7cc50b9075fbc19e43bc15396fdbb9c02f18847e1b53613bc"
+      },
+      {
+        "path": "src/log_lut.c",
+        "sha256": "88d316def7060db8210ad607ccd934b893ca9242ac179a1b8e224ccf69d0a589"
+      },
+      {
+        "path": "src/log_lut.h",
+        "sha256": "38bc096e21af8494866080d66438454da2382ee910edbd4a36b77eb9e824a3c0"
+      },
+      {
+        "path": "src/log_scale.c",
+        "sha256": "165f69f4b7b970b9ea5867d65ebef717cef556541ed71c17d9e35f513a42b32a"
+      },
+      {
+        "path": "src/log_scale.h",
+        "sha256": "2b51d7ab2ee7686a982d8c385bf8091d81941144438bb8f24e2ffd6cdafe44c0"
+      },
+      {
+        "path": "src/log_scale_util.c",
+        "sha256": "f44bcba29b52784959bc3bd4efa36d739716c7b767e08a96d1a2a66e0b49cc0e"
+      },
+      {
+        "path": "src/log_scale_util.h",
+        "sha256": "cb50dd9c9e3411b5ee9427592074cda13db5a168201865da9f7b086880c3be33"
+      },
+      {
+        "path": "src/noise_reduction.c",
+        "sha256": "06dee1b811713bda3ab37d30a0d19837942c5e7435c45868e076fb29702217ba"
+      },
+      {
+        "path": "src/noise_reduction.h",
+        "sha256": "f5f9b8c303f9c28357bf5ba17867b483ee0a2bf9c1732dc740834a7ca6ce66aa"
+      },
+      {
+        "path": "src/noise_reduction_util.c",
+        "sha256": "52739e99b645e8f4cf74cf958266dc33b75833957a8b1115844cacf36b70c76a"
+      },
+      {
+        "path": "src/noise_reduction_util.h",
+        "sha256": "b8e6a56691a8e5be589d4b9ae257613ee708123a151725bee8c6cff25fb51392"
+      },
+      {
+        "path": "src/pcan_gain_control.c",
+        "sha256": "46a47e8bed169e98dd65876d04e776636ea4f9a8499ede04a58604f93bad1e38"
+      },
+      {
+        "path": "src/pcan_gain_control.h",
+        "sha256": "6112b7ac4e4404d1cfd394eaa3fa6e9c9b03f8c56f8079e1a3c9f28943388ea8"
+      },
+      {
+        "path": "src/pcan_gain_control_util.c",
+        "sha256": "354628ef93aa9328e7b7ebd7ddbc5454f627e956c814b7cf11d06b6b85d529cc"
+      },
+      {
+        "path": "src/pcan_gain_control_util.h",
+        "sha256": "9213a58ef41d1eada6bb777f84d8e2f2b674daab4788bc322e3f6f8cce9791d7"
+      },
+      {
+        "path": "src/window.c",
+        "sha256": "9b2704f92586809866019a69314d0470d0b614ba0123b471283ddb7ce9ccd496"
+      },
+      {
+        "path": "src/window.h",
+        "sha256": "0a95ac78adee5f8d614884e8530284dd6c8f35c7423f1fc2bfe0acfcca9320ad"
+      },
+      {
+        "path": "src/window_util.c",
+        "sha256": "2b818d1f388e7f2c2c3c5ded28a72d0a1d576629f6eee7025e36fa6f1cb70f7a"
+      },
+      {
+        "path": "src/window_util.h",
+        "sha256": "4c115fee10548e897ef3ff6ea4e47a68f02b1e9adb8a98734d5209bdbcebb3a8"
+      }
+    ]
+  },
+  {
+    "repository": "esphome/micro-wake-word-models",
+    "revision": "40ff33f57f8fc6ad71a75ef085abbf742495b225",
+    "directory": "vendor/wake/micro_wake_models",
+    "files": [
+      {
+        "path": "LICENSE",
+        "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+      },
+      {
+        "path": "models/v2/hey_jarvis.json",
+        "sha256": "b153867d818675d8abcc9dace474afe7f83551ae0d5a9b1d71a98681320185af"
+      },
+      {
+        "path": "models/v2/hey_jarvis.tflite",
+        "sha256": "21a7976add39ee24ec96c63d96b7aaa18e24d1d9824b963e451da8feb4b78b77"
+      }
+    ]
+  }
+]
