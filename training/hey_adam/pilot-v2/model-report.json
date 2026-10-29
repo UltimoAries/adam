@@ -1,0 +1,78 @@
+{
+  "run_id": "pilot-v2",
+  "model_bytes": 60968,
+  "status": "Experimental prototype; further tuning and real-device acceptance required",
+  "acceptance_passed": false,
+  "sha256": "d3fe60876e2ceae56dcbbc7c13baa01c7616125422d12f67a90d9eccee1015bd",
+  "manifest_sha256": "8150a18d485ccf3983174ec6e31a92466d174bfcff62a5d96957143185566869",
+  "trainer_revision": "4665173cd35f1cff9a61e06fc427f124766c488e",
+  "training": {
+    "source_checkpoint_step": 9500,
+    "additional_steps": 500,
+    "source_weights_sha256": "dbccdcf2e91dd1865561e4a9a89b88070efbb6257f3c0c419283c74eb46e565d"
+  },
+  "data_revisions": {
+    "kahrendt/microwakeword": "0da95f94302ca2f4aae3b18fc6560fa6d2bba3d1",
+    "agkphysics/AudioSet": "0c609e8302cf139307f639c57652032af0a88041",
+    "mchl914/fma_xsmall": "bfef24fd1e1334e4631b917c98e0dbc3dd653ab2",
+    "davidscripka/MIT_environmental_impulse_responses": "b824a1ef2821f112fda0b9cb26e4278c62b425bb"
+  },
+  "input": {
+    "name": "serving_default_inputs:0",
+    "shape": [
+      1,
+      3,
+      40
+    ],
+    "dtype": "int8",
+    "quantization": [
+      0.10196078568696976,
+      -128
+    ]
+  },
+  "output": {
+    "name": "StatefulPartitionedCall_1:0",
+    "shape": [
+      1,
+      1
+    ],
+    "dtype": "uint8",
+    "quantization": [
+      0.00390625,
+      0
+    ]
+  },
+  "streaming_smoke_inferences": 100,
+  "synthetic_evaluation": {
+    "positive_detections": 152,
+    "positive_attempts": 200,
+    "synthetic_recall": 0.76,
+    "near_miss_false_accepts": 2,
+    "near_miss_attempts": 120
+  },
+  "operators": [
+    "ASSIGN_VARIABLE",
+    "CALL_ONCE",
+    "CONCATENATION",
+    "CONV_2D",
+    "DEPTHWISE_CONV_2D",
+    "FULLY_CONNECTED",
+    "LOGISTIC",
+    "QUANTIZE",
+    "READ_VARIABLE",
+    "RESHAPE",
+    "SPLIT_V",
+    "STRIDED_SLICE",
+    "VAR_HANDLE"
+  ],
+  "device_validated": true,
+  "evaluation_limit": "Synthetic held-out positives and upstream background data; informal on-device wake-to-response test passed; controlled household recall and false-trigger tests pending",
+  "provisional_settings": [
+    "probability_cutoff",
+    "sliding_window_size",
+    "tensor_arena_size"
+  ],
+  "source_model": "trained_models/pilot-v2/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite",
+  "upstream_test_report": "trained_models/pilot-v2/tflite_stream_state_internal_quant/tflite_streaming_roc.txt",
+  "device_validation_report": "../../../docs/HEY_ADAM_PILOT.md"
+}

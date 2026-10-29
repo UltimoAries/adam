@@ -13,7 +13,10 @@ around an ESP32-S3 round-display speaker/microphone unit and a Python head-end.
 - Weather answers in the selected voice, with configurable locations and aliases.
 - Animated eye/listening ear, touch menus, volume, brightness, and Wi-Fi setup.
 
-The custom **Hey Adam** model is in preparation. Real house-model import,
+This branch embeds an experimental **Hey Adam** model, `hey_adam-pilot-v2`.
+An initial on-device wake-to-response test passed; controlled household
+acceptance remains pending. See [model validation and rollback](docs/HEY_ADAM_PILOT.md).
+Real house-model import,
 map device placement, Home Assistant, and other smart-home adapters are future
 work. Speech inference stays local; weather and initial dependency/model
 provisioning require internet access.
