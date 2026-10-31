@@ -1,0 +1,38 @@
+services:
+  speech:
+    image: ghcr.io/speaches-ai/speaches@sha256:c0da392c37e76a01ba479239b43124c67baf8913ae0f491071d6ac544641dad7
+    container_name: adam-speech
+    restart: unless-stopped
+    ports:
+      - "${SPEACHES_BIND:-127.0.0.1:8000}:8000"
+    env_file:
+      - speaches.env
+    environment:
+      WHISPER__INFERENCE_DEVICE: cuda
+      WHISPER__COMPUTE_TYPE: int8_float16
+      WHISPER__NUM_WORKERS: "1"
+      WHISPER__CPU_THREADS: "4"
+      STT_MODEL_TTL: "-1"
+      ENABLE_UI: "false"
+      LOG_LEVEL: info
+      HF_HOME: /models/huggingface
+      XDG_CACHE_HOME: /data/cache
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - "${ADAM_VOICE_ROOT:-C:/ADAM_VOICE}/models/speech:/models"
+      - "${ADAM_VOICE_ROOT:-C:/ADAM_VOICE}/data/speech:/data"
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    mem_limit: 6g
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}

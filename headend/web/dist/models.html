@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADAM · Model services</title><link rel="stylesheet" href="/assets/fleet.css">
+<script src="/assets/models.js" defer></script>
+<style>.model-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:24px}.model-grid fieldset{min-width:0;border:0;margin:0}.model-grid label{margin:14px 0}.model-grid legend{font-size:1.3rem;font-weight:700}.model-grid input,.model-grid select{width:100%}.model-grid .inline input{width:auto}#saveModels{margin-top:20px}.model-status{min-height:2.8em}</style>
+</head><body><main>
+<header><div class="adam-brand"><span class="eyebrow">ADAM</span><h1>Model services</h1><p>Speech and conversation across your home computers.</p></div><a href="/">Back to devices ↗</a></header>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<section id="signIn" class="panel" hidden><h2>Sign in to ADAM</h2><p><a href="/">Open the dashboard</a> to sign in, then return here.</p></section>
+<form id="modelForm" hidden>
+<p class="help">Prefer remote to use your GPU computer when available. ADAM keeps local Whisper and your default installed voice as fallbacks. Changes apply to new requests.</p>
+<div id="profiles" class="model-grid"></div>
+<button id="saveModels" class="primary" type="submit">Save model services</button>
+<p class="help">Use the service’s base URL ending in /v1, model ID and voice ID. The service must already be installed and running. Speech output must be a 16-bit PCM WAV lasting at most 15 seconds. An explicitly selected library voice always plays locally; choose Default in paging and information settings to use routing.</p>
+<p class="help">Status updates after a real speech request. During a remote outage, ADAM uses local speech and tries the remote service again after the cooldown. Home Assistant and weather still require their usual network connections.</p>
+</form>
+<form id="conversationForm" class="panel" hidden>
+<h2>Conversation</h2>
+<p>Use the larger model on your computer when available, with a small model on Adam's head-end as a fallback. Answers are short enough to speak. Home controls and weather use their configured services.</p>
+<label class="inline"><input id="conversation-enabled" type="checkbox"> Answer general questions</label>
+<div class="model-grid">
+<fieldset><legend>Preferred computer</legend><label>Ollama address<input id="conversation-remote_url" type="url" maxlength="250" required></label><label>Model<input id="conversation-remote_model" maxlength="150" required></label></fieldset>
+<fieldset><legend>Local fallback</legend><label>Ollama address on the head-end<input id="conversation-local_url" type="url" maxlength="250" required></label><label>Model<input id="conversation-local_model" maxlength="150" required></label></fieldset>
+</div>
+<details><summary>Response timing</summary><label>Preferred model timeout in seconds<input id="conversation-remote_timeout_seconds" type="number" min="1" max="30" step="0.5" required></label><label>Local model timeout in seconds<input id="conversation-local_timeout_seconds" type="number" min="1" max="60" step="0.5" required></label><label>Retry preferred computer after seconds<input id="conversation-cooldown_seconds" type="number" min="5" max="300" required></label></details>
+<button id="saveConversation" type="submit" class="primary">Save conversation settings</button>
+<p id="conversation-status" role="status" class="help"></p>
+<label>Try a question<input id="conversation-question" maxlength="800" placeholder="Why is the sky blue?"></label><button id="testConversation" type="button">Try an answer</button>
+<p id="conversation-answer" role="status"></p>
+</form></main></body></html>

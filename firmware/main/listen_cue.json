@@ -1,0 +1,16 @@
+{
+  "text": "Trigger chime",
+  "cue_kind": "chime",
+  "source": "Original locally synthesized two-note chime",
+  "rate": 16000,
+  "channels": 1,
+  "bits": 16,
+  "seconds": 0.12,
+  "peak": 1000,
+  "frequencies_hz": [
+    880.0,
+    1174.66
+  ],
+  "sha256": "bd1990d66e31003e3e49e68041465a5e3202348323227e386683b0cafa6a1f65",
+  "generator": "tools/make_trigger_chime.py"
+}

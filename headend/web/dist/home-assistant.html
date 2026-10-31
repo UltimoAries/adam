@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Device inventory · ADAM</title><link rel="stylesheet" href="/assets/fleet.css"><link rel="stylesheet" href="/assets/queries.css"><link rel="stylesheet" href="/assets/home-assistant.css"><script src="/assets/home-assistant.js" defer></script></head>
+<body><main>
+<p class="adam-subbrand"><a href="/">ADAM</a> &middot; Automation Display and Mapping</p>
+<header><div><span class="eyebrow">YOUR HOME, THROUGH ADAM</span><h1>Device inventory<span>.</span></h1><p>Names you choose. Controls matched to each device.</p></div><div class="header-right"><a href="/">Adam speakers &amp; paging</a><a href="/queries">Display &amp; information</a></div></header>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<section id="signIn" class="panel auth" hidden><h2>Sign in to manage devices</h2><a href="/?next=%2Fhome-assistant">Sign in</a></section>
+<div id="haDashboard" hidden>
+<div class="inventory-layout"><section class="content inventory-main">
+<div class="panel inventory-toolbar"><div class="section-title"><h2>Home Assistant devices</h2><button id="loadEntities" class="secondary" type="button">Refresh from Home Assistant</button></div>
+<p id="inventorySummary" class="help" role="status"></p>
+<div class="inventory-filters"><label>Find a device<input id="deviceSearch" type="search" placeholder="Name, alias, or entity ID"></label><label>Show<select id="deviceFilter"><option value="imported">Imported into Adam</option><option value="suggested">Main controls</option><option value="all">All entities &amp; sensors</option><option value="missing">Missing devices</option></select></label></div>
+<p class="help">Import a device to use its Home Assistant name immediately. Add an Adam name or aliases to make it easier to say. Each control stays linked to its entity ID. A physical device may have several entries for its controls and sensors.</p></div>
+<div id="inventory" class="inventory-grid"></div>
+<section class="panel"><h2>Adam speakers &amp; screens</h2><p class="help">Speaker names also appear on their idle screens when the device-name display is enabled.</p><div id="adamUnits" class="adam-units"></div><a href="/queries">Manage clock, weather &amp; display information</a></section>
+</section><aside class="content inventory-sidebar">
+<section class="panel"><h2>Home Assistant connection</h2><form id="settingsForm">
+<label>Server address<input id="serverAddress" type="url" required maxlength="250" placeholder="http://homeassistant.local:8123"></label>
+<label>Long-lived access token<input id="accessToken" type="password" autocomplete="new-password" maxlength="4096" spellcheck="false"></label>
+<p id="tokenStatus" class="help">No token saved.</p><p class="help">Create a token in Home Assistant → Profile → Security. It stays on the Adam head-end.</p>
+<label class="toggle"><input id="enabled" type="checkbox">Enable Home Assistant control</label>
+<label class="toggle"><input id="autoImport" type="checkbox">Automatically import main controls using their Home Assistant names</label>
+<p class="help">Includes supported lights, switches, fans, covers, locks, thermostats, media players, scenes and scripts. Device settings and sensors remain available for individual import. Devices you remove stay removed.</p>
+<button id="saveSettings" class="primary" type="submit">Save connection</button><p id="savedStatus" class="help" role="status"></p></form>
+<button id="checkConnection" class="secondary" type="button">Check connection</button><p id="connectionStatus" class="help" role="status">Refreshing only reads your devices.</p><button id="forgetToken" class="quiet" type="button">Remove token &amp; disable control</button></section>
+<section class="panel"><h2>Try a voice command</h2><p class="help">Commands here use the same names and actions as spoken commands. They control real devices.</p>
+<form id="commandForm"><label>Command<input id="command" maxlength="300" required placeholder="Set Bedroom Light to 40 percent"></label><label>Play answer on<select id="replyUnit"><option value="">Show answer here</option></select></label><button id="sendCommand" class="secondary" type="submit">Send command</button></form><div id="answer" class="answer" role="status" aria-live="polite" hidden></div></section>
+</aside></div>
+<footer><span>Local names · Home Assistant entity mapping</span><span>Inventory refreshes every minute while control is enabled</span></footer>
+</div></main>
+<dialog id="deviceDialog"><form id="deviceForm"><div class="section-title"><h2>Manage device</h2><button id="closeDevice" type="button" class="quiet">Close</button></div><p id="mapping" class="mapping"></p>
+<label>Adam name<input id="deviceName" maxlength="80" placeholder="Use Home Assistant name"></label><p id="defaultName" class="help"></p>
+<label>Spoken aliases<input id="deviceAliases" maxlength="647" placeholder="Lounge, front room"></label><p class="help">Separate aliases with commas. Names change only in Adam.</p>
+<label class="toggle"><input id="useDefaultName" type="checkbox">Also recognize the Home Assistant name</label><label class="toggle"><input id="deviceEnabled" type="checkbox">Enable commands for this device</label>
+<p id="deviceError" class="help" role="alert"></p><div class="dialog-actions"><button id="saveDevice" type="submit" class="primary">Save device</button><button id="removeDevice" type="button" class="quiet">Remove from Adam</button></div></form></dialog>
+</body></html>

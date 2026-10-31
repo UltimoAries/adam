@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voice library · ADAM</title><link rel="stylesheet" href="/assets/fleet.css"><link rel="stylesheet" href="/assets/voices.css"><script src="/assets/voices.js" defer></script>
+</head><body><main>
+<p class="adam-subbrand"><a href="/">ADAM</a> &middot; Automation Display and Mapping</p>
+<header><div><span class="eyebrow">ADAM · LOCAL SPEECH</span><h1>Voice library<span>.</span></h1><p>One voice for announcements and the features to come.</p></div><div class="header-right"><a href="/">← Devices & paging</a><span class="badge">Runs locally</span></div></header>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<section id="signIn" class="panel auth" hidden><h2>Sign in to manage voices</h2><p>Your administrator account controls the voice library.</p><a class="file-button" href="/?next=%2Fvoices">Sign in</a></section>
+<div id="voiceDashboard" hidden>
+<div class="voice-overview"><span class="status-dot"></span><p id="defaultDescription">Loading your voice library…</p><span class="badge">Piper ONNX · package v1</span></div>
+<div class="voice-layout">
+<aside><section class="panel"><span class="eyebrow">MAKE IT YOURS</span><h2>Add a voice</h2><p class="help">Import a finished Piper voice package. Each version includes its model, matching configuration, license, and checksums.</p>
+<button id="choosePackage" type="button" class="package-drop"><span aria-hidden="true">↑</span><strong>Choose a voice ZIP</strong><small>Up to 160 MiB</small></button><input id="packageInput" type="file" accept=".zip,application/zip" hidden><p id="packageName" class="help">No package selected</p><button id="importPackage" class="primary full" disabled>Import & validate</button>
+<progress id="uploadProgress" max="100" value="0" hidden></progress><p id="importState" class="help" role="status" aria-live="polite">New voices are tested before they are installed. Your current default stays selected.</p>
+<div class="format-note"><strong>Package contents</strong><code>voice.json<br>model.onnx<br>model.onnx.json<br>LICENSE.txt</code><p class="help">Recordings and training checkpoints need to be trained/exported into a compatible model first.</p><a href="/api/voices/template" download>Download manifest template ↓</a><a href="/api/voices/guide" download>Format & training guide ↓</a></div></section></aside>
+<div class="content"><section class="panel"><div class="section-title"><div><span class="eyebrow">LISTEN FIRST</span><h2>Try a voice</h2></div><span id="previewState" class="muted">Local preview</span></div><label>Voice<select id="previewVoice"></select></label><label class="preview-label" for="previewText">Preview text</label><textarea id="previewText" maxlength="200" rows="3">Hello. Dinner is ready. Your living room lights are on.</textarea><div class="send-row"><span>Up to 200 characters · 15 seconds of speech</span><button id="generatePreview" class="primary">Generate preview</button></div><audio id="previewPlayer" controls hidden aria-label="Play the selected voice preview"></audio><p id="previewDetails" class="help" hidden></p></section>
+<section class="panel"><div class="section-title"><h2>Installed voices</h2><span id="voiceCount" class="badge">0 voices</span></div><div id="voiceList" class="voice-list"></div></section>
+<p class="help voice-footnote">The default voice is used for typed pages and information replies unless you choose an override in Information &amp; sources. You can choose a different voice for an individual page. Recorded messages keep the sender’s voice; the box’s short wake cue is managed separately.</p></div></div>
+<footer><span id="libraryStatus">Model files and generated speech stay local.</span><span>Preview a voice before making it the default.</span></footer></div>
+</main></body></html>

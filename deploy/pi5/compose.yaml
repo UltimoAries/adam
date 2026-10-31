@@ -1,0 +1,31 @@
+services:
+  adam:
+    build:
+      context: ../..
+      dockerfile: deploy/pi5/Dockerfile
+    platform: linux/arm64
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    user: "${ADAM_UID:-1000}:${ADAM_GID:-1000}"
+    environment:
+      ADAM_LAN_IP: "${ADAM_LAN_IP:?Set the Pi's reserved LAN IPv4 address in .env}"
+      ADAM_HOSTNAME: "${ADAM_HOSTNAME:-adam.local}"
+      VOICE_USB_PORT: /dev/ttyACM0
+    volumes:
+      - ../../headend/data:/app/headend/data
+      - ../../headend/models:/app/headend/models:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3

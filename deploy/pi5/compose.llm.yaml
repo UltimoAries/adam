@@ -1,0 +1,30 @@
+# Optional CPU-only conversation fallback on the Pi. The API is loopback-only.
+services:
+  ollama:
+    image: ollama/ollama:0.40.13
+    platform: linux/arm64
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:11434:11434
+    environment:
+      HOME: /data
+      OLLAMA_MODELS: /models
+      OLLAMA_NO_CLOUD: "1"
+      OLLAMA_CONTEXT_LENGTH: "1024"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "-1"
+    user: "${ADAM_UID:-1000}:${ADAM_GID:-1000}"
+    volumes:
+      - ../../headend/models/llm:/models
+      - ../../headend/data/ollama:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cpus: "2.0"
+    mem_limit: 3g
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}

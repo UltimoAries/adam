@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Information & sources · ADAM</title><link rel="stylesheet" href="/assets/fleet.css"><link rel="stylesheet" href="/assets/queries.css"><script src="/assets/queries.js" defer></script></head>
+<body><main>
+<p class="adam-subbrand"><a href="/">ADAM</a> &middot; Automation Display and Mapping</p><header><div><span class="eyebrow">ADAM · ANSWERS AT HOME</span><h1>Information<span>.</span></h1><p>Useful answers, in your chosen voice.</p></div><div class="header-right"><a href="/">← Devices & paging</a><a href="/voices">Voice library</a></div></header>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<section id="signIn" class="panel auth" hidden><h2>Sign in to configure information sources</h2><a href="/?next=%2Fqueries">Sign in</a></section>
+<div id="queryDashboard" hidden><div class="overview"><p>Say “Hey Adam, what's the weather in Seattle, Washington?” Replies play on the unit that heard you. Try current weather, today's forecast, or tomorrow's forecast.</p></div>
+<div class="query-layout"><div class="content"><section class="panel"><span class="eyebrow">WEATHER</span><h2>Source & replies</h2>
+<form id="settingsForm"><label class="toggle"><input id="enabled" type="checkbox">Enable weather answers</label>
+<label>Weather source<select id="provider"><option value="open-meteo">Open-Meteo · free noncommercial API</option></select></label>
+<p class="help">No API key needed. City searches and coordinates go to Open-Meteo over the internet. Your recordings, transcripts, and voice generation stay local on your head-end. Weather is cached for up to ten minutes.</p>
+<div class="field-pair"><label>Temperature<select id="units"><option value="fahrenheit">Fahrenheit</option><option value="celsius">Celsius</option></select></label><label>Home location<select id="defaultLocation"></select></label></div>
+<label class="toggle"><input id="panelName" type="checkbox">Show device name on the panel</label>
+<p class="help">The panel shows time and weather with an optional device name. Change device names on Devices &amp; paging. Home supplies local weather and time unless a device has its own location below.</p>
+<div id="deviceLocations"></div>
+<label>Reply voice<select id="replyVoice"><option value="">Follow voice-library default</option></select></label><p class="help">Use your default voice everywhere, or choose a separate voice for information replies.</p>
+<button class="primary" type="submit" id="saveSettings">Save settings</button><p id="savedStatus" class="help" role="status">Changes take effect after saving.</p></form></section>
+<section class="panel"><h2>Try a question</h2><p class="help">Test the saved settings without speaking. Preview shows the answer here; sending plays it on one unit.</p>
+<form id="testForm"><label>Question<input id="question" maxlength="300" required value="What's the weather in Seattle, WA?"></label><label>Play answer on<select id="testUnit"><option value="">Preview only</option></select></label><button id="testQuery" class="secondary">Try question</button></form><div id="answer" class="answer" role="status" aria-live="polite" hidden></div></section></div>
+<aside class="content"><section class="panel"><h2>Saved locations</h2><p class="help">Use names such as “home” or “the cabin.” A question without a place uses that device's location, or Home.</p><div id="locations"></div>
+<form id="searchForm"><label>Find a city or town<input id="searchName" autocomplete="off" aria-autocomplete="list" aria-controls="searchResults" placeholder="Portland, Oregon" minlength="2" maxlength="80" required></label><button id="searchLocations" class="secondary">Search locations</button></form><div id="searchResults" role="status"></div><p class="help">Start typing a town, city, state, or country. Choose a suggestion, select it as Home or for a device, then save settings. The location also sets the local time zone. Up to 16 locations.</p></section>
+<section class="panel"><h2>Supported questions</h2><ul><li>What's the weather?</li><li>What's the temperature in Seattle?</li><li>What's tomorrow's forecast at home?</li><li>Will it rain today in Portland, Oregon?</li></ul><p class="help">Configure switch commands separately under <a href="/home-assistant">Home Assistant</a>. Other unsupported questions remain in your transcripts without an automatic reply.</p></section></aside></div>
+<footer><span>Weather data: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a></span><span>Weather needs internet · speech stays local</span></footer></div></main></body></html>
