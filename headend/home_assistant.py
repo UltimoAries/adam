@@ -10,7 +10,7 @@ import httpx
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from .ha_devices import (ENTITY_PATTERN, attributes_for_inventory, controls, capabilities,
-                         normalized, action_payload)
+                         format_entity_state, normalized, summary_intent, action_payload)
 from .ha_inventory import HomeAssistantInventory
 
 
@@ -169,9 +169,7 @@ class HomeAssistantClient:
         if current == 'unavailable' or (current == 'unknown' and entity_id.split('.')[0] not in ('button', 'input_button', 'scene', 'script')):
             return dict(result, status='unavailable', text=f'{name} is unavailable in Home Assistant. No command was sent.')
         if action == 'status':
-            detail = f'{name} is {current}.'
-            if 'current_temperature' in attrs: detail += f" Current temperature is {attrs['current_temperature']}."
-            return dict(result, status='answered', text=detail)
+            return dict(result, status='answered', text=format_entity_state(entity_id, name, current, attrs))
         attrs['_state'] = current
         if action == 'level':
             action = {'light': 'brightness', 'fan': 'speed', 'cover': 'position', 'climate': 'temperature',
@@ -321,9 +319,102 @@ class HomeAssistantService:
             return db.execute('SELECT 1 FROM home_assistant_commands WHERE unit_id=? AND session_id=?',
                               (unit_id, session_id)).fetchone() is not None
 
+    @staticmethod
+    def _summary_targets(rows: list[dict], category: str) -> list[dict]:
+        active = [r for r in rows if r['imported'] and r['enabled'] and r['present']]
+        out = []
+        for r in active:
+            domain = r['domain']
+            dev_class = str(r.get('attributes', {}).get('device_class', '')).casefold()
+            words = set(normalized(r['name']).split())
+            is_window = (domain == 'binary_sensor' and dev_class == 'window') or (
+                domain == 'cover' and (dev_class == 'window' or 'window' in words or 'windows' in words)
+            )
+            is_door = (domain == 'binary_sensor' and dev_class in ('door', 'garage_door', 'opening')) or (
+                domain == 'cover' and not is_window and dev_class not in ('shade', 'blind', 'curtain', 'awning', 'shutter')
+            )
+            if category == 'doors' and is_door:
+                out.append(r)
+            elif category == 'windows' and is_window:
+                out.append(r)
+            elif category == 'openings' and (is_door or is_window):
+                out.append(r)
+            elif category == 'locks' and (domain == 'lock' or (domain == 'binary_sensor' and dev_class == 'lock')):
+                out.append(r)
+            elif category == 'lights' and (domain == 'light' or (domain == 'switch' and bool(words & {'light', 'lights', 'lamp', 'lamps'}))):
+                out.append(r)
+            elif category == 'leaks' and domain == 'binary_sensor' and dev_class == 'moisture':
+                out.append(r)
+        return out
+
+    def _answer_summary(self, category: str, settings: HomeAssistantSettings) -> dict:
+        labels = {
+            'doors': ('door', 'doors', 'open', 'closed'),
+            'windows': ('window', 'windows', 'open', 'closed'),
+            'openings': ('door or window', 'doors and windows', 'open', 'closed'),
+            'locks': ('lock', 'locks', 'unlocked', 'locked'),
+            'lights': ('light', 'lights', 'on', 'off'),
+            'leaks': ('leak sensor', 'leak sensors', 'wet', 'dry'),
+        }
+        singular, plural, active_word, calm_word = labels[category]
+        targets = self._summary_targets(self.inventory.rows(settings), category)
+        base = dict(source='Home Assistant', source_url=settings.url, category=category)
+        if not targets:
+            return dict(base, status='answered', text=f'No {plural} are imported in Home Assistant.')
+        try:
+            live = {r['entity_id']: r['state'] for r in self.client.entities(settings, all_domains=True)}
+        except HomeAssistantUnavailable as exc:
+            return dict(base, status='unavailable', text=str(exc))
+
+        triggered, offline = [], []
+        for r in targets:
+            st = live.get(r['entity_id'], 'unavailable')
+            if st in ('unavailable', 'unknown'):
+                offline.append(r['name'])
+                continue
+            domain = r['domain']
+            if category in ('doors', 'windows', 'openings'):
+                is_active = (domain == 'binary_sensor' and st == 'on') or (domain == 'cover' and st != 'closed')
+            elif category == 'locks':
+                is_active = (domain == 'binary_sensor' and st == 'on') or (domain == 'lock' and st != 'locked')
+            else:
+                is_active = st == 'on'
+            if is_active:
+                triggered.append(r['name'])
+
+        def _join_names(items: list[str]) -> str:
+            shown = items[:3]
+            extra = len(items) - len(shown)
+            if extra > 0:
+                return f"{', '.join(shown)}, and {extra} more"
+            if len(shown) == 2:
+                return f'{shown[0]} and {shown[1]}'
+            return shown[0]
+
+        suffix = f' ({len(offline)} unavailable.)' if offline else ''
+        if triggered:
+            count = len(triggered)
+            noun = singular if count == 1 else plural
+            verb = 'is' if count == 1 else 'are'
+            text = f'{count} {noun} {verb} {active_word}: {_join_names(triggered)}.{suffix}'
+            return dict(base, status='answered', text=text[:195])
+
+        reachable = len(targets) - len(offline)
+        if reachable == 0:
+            return dict(base, status='unavailable', text=f'All {len(offline)} {plural} are unavailable in Home Assistant.')
+        if reachable == 1:
+            name = next(r['name'] for r in targets if r['name'] not in offline)
+            text = f'{name} is {calm_word}.{suffix}'
+        else:
+            text = f'All {reachable} {plural} are {calm_word}.{suffix}'
+        return dict(base, status='answered', text=text[:195])
+
     def answer(self, text, settings, before_action=lambda: True):
         matches = self.inventory.matches(settings, text)
         if not matches:
+            category = summary_intent(text)
+            if category:
+                return self._answer_summary(category, settings)
             return dict(status='ignored', text='')
         if len(matches) != 1:
             return dict(status='ambiguous', text='That name matches more than one device. Give them distinct Adam names or aliases in the inventory. No command was sent.')
@@ -368,7 +459,7 @@ class HomeAssistantService:
             return
         with self.lock:
             settings = self.settings()
-            if not settings.enabled or not self.inventory.matches(settings, job['text']):
+            if not settings.enabled or (not self.inventory.matches(settings, job['text']) and not summary_intent(job['text'])):
                 entry['reply'] = dict(status='ignored', text='')
                 return False
             if entry.get('home_assistant_submitted'):

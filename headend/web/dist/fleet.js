@@ -58,6 +58,25 @@ function historyItem(container,id){
   if(!item){item=el('article','','history-item');item.dataset.id=id;const heading=el('div','','history-heading');heading.append(el('strong','','title'),el('span','','badge'));item.append(heading,el('p'),el('small'));container.prepend(item);}
   return item;
 }
+function formatCountdown(sec){
+  const s=Math.max(0,Math.floor(sec)),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),rem=s%60;
+  return h?`${h}:${String(m).padStart(2,'0')}:${String(rem).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(rem).padStart(2,'0')}`;
+}
+function timers(){
+  const container=$('timers');if(!container)return;
+  const rows=fleet.timers||[];
+  container.replaceChildren();
+  if(!rows.length){container.append(el('div','No active timers. Try “Hey Adam, set a 10 minute pasta timer.”','empty'));return;}
+  for(const row of rows){
+    const rem=Math.ceil(row.end_unix-Date.now()/1000),ringing=rem<=0;
+    const item=el('article','','history-item'),heading=el('div','','history-heading');
+    heading.append(el('strong',`${row.label||'Timer'} · ${row.unit_name||'Speaker'}`,'title'),el('span',ringing?'Ringing':formatCountdown(rem),`badge ${ringing?'error':'online'}`));
+    const meta=el('small',ringing?'Completed · tap speaker or cancel to dismiss':`Ends at ${new Date(row.end_unix*1000).toLocaleTimeString()}`);
+    const cancel=el('button',ringing?'Dismiss':'Cancel','quiet');cancel.style.marginLeft='14px';
+    cancel.onclick=guard(async()=>{await api(`/api/timers/${row.id}`,{method:'DELETE'});await refresh();});
+    item.append(heading,meta,cancel);container.append(item);
+  }
+}
 function histories(){
   const names=new Map(fleet.units.map(u=>[u.id,u.name]));
   for(const [key,empty] of [['sessions','No voice sessions yet. Try Listen on the connected unit.'],['pages','Your sent messages and delivery confirmations will appear here.']]){
@@ -94,7 +113,7 @@ function histories(){
 }
 async function refresh(){
   if(!signedIn||polling)return;polling=true;
-  try{fleet=await api('/api/fleet');const archive=fleet.training_archive;const warning=archive?(!archive.ready?'Training archive is unavailable. Voice processing continues.':!archive.settings.enabled?'Training collection is paused.':archive.warning||(archive.full?'Training archive limit reached. Voice processing continues.':'')):'';$('trainingWarning').textContent=warning;$('trainingWarning').hidden=!warning;$('connection').textContent='Head-end online';$('connection').className='badge online';$('onlineCount').textContent=fleet.units.filter(u=>u.online).length;$('pendingCount').textContent=fleet.pages.filter(p=>['queued','offered','playing'].includes(p.state)).length;$('sessionCount').textContent=fleet.sessions.length;$('serverUrl').textContent=fleet.url;if(!$('pairUrl').value)$('pairUrl').value=fleet.url;units();histories();selection();}
+  try{fleet=await api('/api/fleet');const archive=fleet.training_archive;const warning=archive?(!archive.ready?'Training archive is unavailable. Voice processing continues.':!archive.settings.enabled?'Training collection is paused.':archive.warning||(archive.full?'Training archive limit reached. Voice processing continues.':'')):'';$('trainingWarning').textContent=warning;$('trainingWarning').hidden=!warning;$('connection').textContent='Head-end online';$('connection').className='badge online';$('onlineCount').textContent=fleet.units.filter(u=>u.online).length;$('pendingCount').textContent=fleet.pages.filter(p=>['queued','offered','playing'].includes(p.state)).length;$('sessionCount').textContent=fleet.sessions.length;$('serverUrl').textContent=fleet.url;if(!$('pairUrl').value)$('pairUrl').value=fleet.url;units();timers();histories();selection();}
   finally{polling=false;}
 }
 function tab(value){mode=value;$('textCompose').hidden=mode!=='text';$('voiceCompose').hidden=mode!=='voice';for(const name of ['text','voice']){$(name+'Tab').classList.toggle('active',mode===name);$(name+'Tab').setAttribute('aria-pressed',String(mode===name));}selection();}

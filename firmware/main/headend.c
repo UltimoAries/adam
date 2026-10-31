@@ -4,6 +4,7 @@
 #include "audio.h"
 #include "mic.h"
 #include "preferences.h"
+#include "space.h"
 #include "wake.h"
 #include "preroll.h"
 #include <ctype.h>
@@ -33,6 +34,27 @@ static int64_t last_contact;
 static state_t state;
 static char wake_model[97];
 static headend_panel_t panel_data;
+static char dismissed_ids[8][17];
+static unsigned dismissed_count;
+static char poll_response[2560];
+static int64_t next_timer_chime_us;
+static bool safe_id(const char *value,unsigned length,bool exact);
+
+static bool is_dismissed_locked(const char *id)
+{
+    for (unsigned i=0;i<dismissed_count;++i)
+        if (!strcmp(dismissed_ids[i],id)) return true;
+    return false;
+}
+static void record_dismissed_locked(const char *id)
+{
+    if (!id || !safe_id(id,16,true) || is_dismissed_locked(id)) return;
+    if (dismissed_count==8) {
+        memmove(dismissed_ids[0],dismissed_ids[1],7*sizeof(dismissed_ids[0]));
+        --dismissed_count;
+    }
+    snprintf(dismissed_ids[dismissed_count++],sizeof(dismissed_ids[0]),"%s",id);
+}
 
 void headend_panel(headend_panel_t *out)
 { portENTER_CRITICAL(&guard); *out=panel_data; portEXIT_CRITICAL(&guard); }
@@ -65,7 +87,92 @@ static void update_panel(const cJSON *root)
         next.weather_ready=true;next.temperature=temp->valueint;next.weather_code=code->valueint;
         next.observed_at=(int64_t)observed->valuedouble;
     }
-    portENTER_CRITICAL(&guard); panel_data=next; portEXIT_CRITICAL(&guard);
+    const cJSON *timers=cJSON_GetObjectItemCaseSensitive(p,"timers");
+    char server_ids[HEADEND_MAX_TIMERS][17];
+    unsigned server_count=0;
+    if (cJSON_IsArray(timers)) {
+        const cJSON *item=NULL;
+        cJSON_ArrayForEach(item,timers) {
+            if (next.timer_count>=HEADEND_MAX_TIMERS) break;
+            const cJSON *tid=cJSON_GetObjectItemCaseSensitive(item,"id"),
+                        *tlabel=cJSON_GetObjectItemCaseSensitive(item,"label"),
+                        *tend=cJSON_GetObjectItemCaseSensitive(item,"end_unix"),
+                        *tdur=cJSON_GetObjectItemCaseSensitive(item,"duration_s");
+            if (!cJSON_IsString(tid) || !safe_id(tid->valuestring,16,true) ||
+                !cJSON_IsNumber(tend) || tend->valuedouble<1577836800 || tend->valuedouble>4102444800.0) continue;
+            if (server_count<HEADEND_MAX_TIMERS) snprintf(server_ids[server_count++],17,"%s",tid->valuestring);
+            headend_timer_t *dst=&next.timers[next.timer_count];
+            snprintf(dst->id,sizeof(dst->id),"%s",tid->valuestring);
+            const char *raw_lbl=(cJSON_IsString(tlabel) && tlabel->valuestring[0])?tlabel->valuestring:"TIMER";
+            size_t li=0;
+            for (;raw_lbl[li] && li<sizeof(dst->label)-1;++li) {
+                unsigned char ch=(unsigned char)raw_lbl[li];
+                dst->label[li]=(ch>=32 && ch<=126)?(char)toupper(ch):' ';
+            }
+            dst->label[li]=0;
+            dst->duration_s=(cJSON_IsNumber(tdur) && tdur->valueint>0)?tdur->valueint:60;
+            int64_t delta_s=(int64_t)tend->valuedouble-next.unix_time;
+            dst->deadline_us=next.synced_us+delta_s*1000000LL;
+            ++next.timer_count;
+        }
+    }
+    portENTER_CRITICAL(&guard);
+    // Filter any locally dismissed timers not yet acknowledged, and prune acknowledged IDs.
+    if (cJSON_IsArray(timers)) {
+        unsigned write_idx=0;
+        for (unsigned i=0;i<next.timer_count;++i) {
+            if (!is_dismissed_locked(next.timers[i].id)) next.timers[write_idx++]=next.timers[i];
+        }
+        next.timer_count=write_idx;
+        unsigned kept=0;
+        for (unsigned d=0;d<dismissed_count;++d) {
+            bool still_on_server=false;
+            for (unsigned s=0;s<server_count;++s)
+                if (!strcmp(dismissed_ids[d],server_ids[s])) { still_on_server=true;break; }
+            if (still_on_server) {
+                if (kept!=d) memcpy(dismissed_ids[kept],dismissed_ids[d],sizeof(dismissed_ids[0]));
+                ++kept;
+            }
+        }
+        dismissed_count=kept;
+    }
+    panel_data=next;
+    portEXIT_CRITICAL(&guard);
+}
+
+void headend_dismiss_timer(const char *id)
+{
+    if (!id || !id[0]) return;
+    portENTER_CRITICAL(&guard);
+    record_dismissed_locked(id);
+    unsigned w=0;
+    for (unsigned i=0;i<panel_data.timer_count;++i) {
+        if (strcmp(panel_data.timers[i].id,id)) panel_data.timers[w++]=panel_data.timers[i];
+    }
+    panel_data.timer_count=w;
+    portEXIT_CRITICAL(&guard);
+    if (worker) xTaskNotifyGive(worker);
+}
+
+bool headend_dismiss_ringing(int64_t now)
+{
+    bool any=false;
+    portENTER_CRITICAL(&guard);
+    unsigned w=0;
+    for (unsigned i=0;i<panel_data.timer_count;++i) {
+        int64_t elapsed=now-panel_data.timers[i].deadline_us;
+        if (elapsed>=0 && elapsed<60000000LL) {
+            record_dismissed_locked(panel_data.timers[i].id);
+            any=true;
+        } else panel_data.timers[w++]=panel_data.timers[i];
+    }
+    panel_data.timer_count=w;
+    portEXIT_CRITICAL(&guard);
+    if (any) {
+        audio_stop();
+        if (worker) xTaskNotifyGive(worker);
+    }
+    return any;
 }
 
 static void set_state(state_t value)
@@ -88,7 +195,7 @@ static bool safe_url(const char *url)
 }
 static esp_http_client_handle_t client(const config_t *cfg,const char *path,esp_http_client_method_t method)
 {
-    char url[300],auth[80];
+    char url[420],auth[80];
     snprintf(url,sizeof(url),"%s/api/units/%s/%s",cfg->url,cfg->unit,path);
     const esp_http_client_config_t options={.url=url,.timeout_ms=3000,.buffer_size=1024,.buffer_size_tx=1024};
     esp_http_client_handle_t handle=esp_http_client_init(&options);
@@ -311,14 +418,23 @@ static void task(void *unused)
             set_state(ok?PROCESSING:stopped?READY:ERROR);
         } else if (!paired || !wifi_ready()) set_state(paired?OFFLINE:UNPAIRED);
         else {
-            char response[1536];
-            char path[180];
-            snprintf(path,sizeof(path),"poll?firmware=v27&wake_model=%s&busy=%d",wake_model_id(),
-                     headend_busy() || mic_recording() || audio_is_playing() || audio_clip_busy());
-            bool ok=request(&cfg,path,NULL,response,sizeof(response));
+            char dismissed[160]="";
+            portENTER_CRITICAL(&guard);
+            size_t pos=0;
+            for (unsigned i=0;i<dismissed_count;++i) {
+                int w=snprintf(dismissed+pos,sizeof(dismissed)-pos,"%s%s",i?",":"",dismissed_ids[i]);
+                if (w<0 || (size_t)w>=sizeof(dismissed)-pos) break;
+                pos+=(size_t)w;
+            }
+            portEXIT_CRITICAL(&guard);
+            char path[340];
+            snprintf(path,sizeof(path),"poll?firmware=v28&wake_model=%s&busy=%d%s%s",wake_model_id(),
+                     headend_busy() || mic_recording() || audio_is_playing() || audio_clip_busy(),
+                     dismissed[0]?"&dismissed=":"",dismissed);
+            bool ok=request(&cfg,path,NULL,poll_response,sizeof(poll_response));
             if (!ok) set_state(OFFLINE);
             else {
-                cJSON *root=cJSON_Parse(response);
+                cJSON *root=cJSON_Parse(poll_response);
                 update_panel(root);
                 const cJSON *type=cJSON_GetObjectItemCaseSensitive(root,"type");
                 if (cJSON_IsString(type) && !strcmp(type->valuestring,"listen")) headend_start(NULL);
@@ -398,10 +514,23 @@ void headend_status(void)
            pre,live,history,gaps,storage?(unsigned)(VOICE_STORAGE_BLOCKS*sizeof(*storage)):0);
     printf("OK endpoint automatic=%d reason=%u threshold_energy=%u silence_ms=1200 max_live_ms=13000\n",automatic,reason,threshold);
     headend_panel_t p;headend_panel(&p);
-    printf("OK panel clock=%d weather=%s temperature=%d units=%c offset=%d age_ms=%lld location=%s llm=%s\n",
+    printf("OK panel clock=%d weather=%s temperature=%d units=%c offset=%d age_ms=%lld location=%s llm=%s timers=%u\n",
            p.clock_ready,p.weather_state,p.temperature,p.units?p.units:'F',p.utc_offset,
            p.synced_us?(long long)((esp_timer_get_time()-p.synced_us)/1000):-1LL,p.location,
-           p.llm_provider==HEADEND_LLM_GPU?"gpu":p.llm_provider==HEADEND_LLM_PI?"pi":"unknown");
+           p.llm_provider==HEADEND_LLM_GPU?"gpu":p.llm_provider==HEADEND_LLM_PI?"pi":"unknown",
+           p.timer_count);
+}
+void headend_timer_tick(int64_t now)
+{
+    if (!space_timer_ringing(now)) {
+        next_timer_chime_us=0;
+        return;
+    }
+    if (now<next_timer_chime_us) return;
+    if (!headend_listening() && !mic_recording() && !audio_is_playing() && !audio_clip_busy()) {
+        audio_play_chime();
+        next_timer_chime_us=now+2500000LL;
+    }
 }
 bool headend_selftest(void)
 {

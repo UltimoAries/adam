@@ -6,12 +6,14 @@ pointing down**. On the enclosure side in this orientation:
 - **Upper physical button:** `BOOT` (`GPIO0`) — hold while resetting to force ROM download mode if needed.
 - **Lower physical button:** hardware `RESET`.
 
-Firmware v27 boots into the [illustrated sky home screen](SPACE_PANEL.md).
-Controls start hidden so the clock and weather scene remain unobstructed. Tap
-anywhere once to reveal the curved volume, brightness and navigation controls;
-they hide automatically after eight seconds of inactivity. That first tap never
-changes a level or opens a menu (except tapping the center during active capture
-or playback, which stops it immediately).
+Firmware v28 boots into the [illustrated sky home screen](SPACE_PANEL.md).
+Controls start hidden so the clock, weather scene and any active countdown timer
+bars remain unobstructed. Tap anywhere once to reveal the curved volume,
+brightness and navigation controls; they hide automatically after eight seconds
+of inactivity. That first tap never changes a level or opens a menu (except
+tapping `[X]` → `[OK?]` on a countdown timer bar, tapping anywhere to silence a
+ringing `00:00` timer, or tapping the center during active capture/playback to
+stop it immediately).
 
 ## Screen map
 
@@ -20,7 +22,8 @@ or playback, which stops it immediately).
 | Left curved `+` / `−` | Adjust saved speaker volume by 10 (`0` to `100`; `0` mutes the amplifier) |
 | Right curved `+` / `−` | Adjust saved backlight brightness by 10 (`10` to `100`) |
 | Top / bottom arrow | Switch between Home and Settings (or step back from submenus) |
-| Center tap | Hide visible controls when idle, or cancel active listening/playback immediately |
+| Center tap | Hide visible controls when idle, silence a ringing timer, or cancel active listening/playback immediately |
+| Home timer bar `[X]` → `[OK?]` | 1st tap arms gold `OK?` confirmation for 3 s; 2nd tap cancels the timer (tap bar body to cycle when 3+ active) |
 | **Settings → Home** | Return to the live sky home screen |
 | **Settings → Voice** | Toggle on-device **Hey Adam** wake detection (mute/enable), start a **Talk 8S** Wi-Fi capture, or view head-end pairing/poll status |
 | **Settings → Wi-Fi** | Scan 2.4 GHz networks, enter SSID/password, connect, or forget saved credentials |

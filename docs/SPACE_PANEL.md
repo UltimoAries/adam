@@ -1,11 +1,12 @@
 # Sky home screen
 
-Firmware v27 renders an illustrated local-time sky and weather home screen in six
-centered rows: **device name, weekday, month/date, time, weather condition, and
-temperature**. Standard labels use a 21 px glyph height, time uses 35 px and
-temperature uses 28 px, with the AM/PM marker and degree unit aligned to their
-row baselines. Long device names wrap cleanly across up to two 14 px lines
-(supporting names up to 24 ASCII characters).
+Firmware v28 renders an illustrated local-time sky, weather and countdown-timer
+home screen in six centered rows: **device name, weekday, month/date, time, and
+either stacked countdown timer bars (when 1+ timers are active on that unit) or
+weather condition + temperature**. Standard labels use a 21 px glyph height, time
+uses 35 px and temperature uses 28 px, with the AM/PM marker and degree unit
+aligned to their row baselines. Long device names wrap cleanly across up to two
+14 px lines (supporting names up to 24 ASCII characters).
 
 Every text row uses solid white lettering framed by a complete two-pixel black
 outline (including diagonals) for high contrast across daylight, night and
@@ -61,8 +62,21 @@ seconds without generating prompts or forcing model loads, matching loaded sourc
 models and the `adam:latest` alias by digest so device polls read cached state
 instantly.
 
-## Touch behavior, location and freshness rules
+## Touch behavior, timers, location and freshness rules
 
+- **On-screen countdown timer bars (v28):** When one or more countdown timers are
+  active on a speaker unit (`panel.timers`), the lower weather band (`y = 216..292`,
+  `x = 82..278`, clear of both curved side rails and the bottom arrow) swaps to up
+  to **two stacked timer bars** showing the timer label, live `MM:SS` / `H:MM:SS`
+  countdown, remaining progress bar, and right `[X]` cancel button. When 3+
+  timers run on the same speaker, tapping a bar body cycles through visible timers
+  (`1/3`, `2/3`, `3/3`). While counting down, tapping `[X]` once arms a gold
+  `[OK?]` confirmation for 3 seconds and tapping `[OK?]` cancels the timer (syncing
+  back via `/poll?dismissed=...`). When a timer hits `0:00`, it pulses gold
+  (`00:00 DONE`), plays rhythmic chime bursts every `2.5s` for up to `60s` (leaving
+  quiet air so `"Hey Adam, stop"` works), and **one tap anywhere on Home**
+  silences and dismisses immediately. Countdowns convert `end_unix` to local
+  monotonic `esp_timer` deadlines so brief Wi-Fi drops never stall a running timer.
 - **Hidden-by-default controls:** Volume, brightness and navigation arrows start
   hidden. Tap anywhere once to reveal them for eight seconds without changing a
   level. Tapping the center during active capture or playback cancels it
@@ -93,6 +107,8 @@ python tools/control.py sky 06 15
 python tools/control.py sky weather 63
 python tools/control.py sky live
 python tools/control.py sky weather live
+python tools/control.py timer preview 90 PASTA
+python tools/control.py timer clear
 python tools/snapshot.py artifacts/space-idle.png
 ```
 
@@ -108,7 +124,7 @@ python tools/check_weather_panel.py
 .\headend\.venv\Scripts\python.exe -m unittest headend.test_panel -v
 ```
 
-## Firmware evolution summary (v14–v27)
+## Firmware evolution summary (v14–v28)
 
 | Firmware | Milestone summary |
 | --- | --- |
@@ -118,3 +134,4 @@ python tools/check_weather_panel.py
 | **v20–v21** | Introduced the six-row centered weather layout, WMO precipitation/cloud animations (`sky weather CODE`), illustrated sun/crescent moon/puffy clouds, and full two-pixel black outlines around white text. |
 | **v22–v23** | Layered translucent green/blue ripple mist over the live weather sky (~10–12 fps during active mist blending) and lowered the 120 ms listening chime by 20 dB (`peak: 1000`) to eliminate microphone pre-roll clipping. |
 | **v24–v27** | Added head-end `llm_provider` polling metadata and the persistent green/yellow LLM edge ring (v24), widened the core to 8 px with a 14 px inward glow (v25), switched rain/drizzle to high-contrast saturated blue drops (v26), and softened the inner/outer ring halo opacity by 25% (v27). |
+| **v28** | Added per-unit monotonic countdown timer bars in the lower Home band, 2-tap `[X]` → `[OK?]` cancel confirmation while running, 1-tap-anywhere silence + rhythmic 2.5 s chime bursts when ringing, `/poll?dismissed=...` sync, and `timer preview` / `timer clear` USB commands. |

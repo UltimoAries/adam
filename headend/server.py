@@ -181,7 +181,7 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
             await asyncio.gather(asyncio.to_thread(jobs.preload),asyncio.to_thread(warm_voice))
         yield
         await asyncio.to_thread(jobs.pool.shutdown,wait=True,cancel_futures=False)
-        fleet.home_assistant.close()
+        fleet.home_assistant.close(); fleet.timers.close()
         fleet.panel.close()
         fleet.conversation.close()
         fleet.queries.close()

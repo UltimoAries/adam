@@ -249,6 +249,7 @@ void ui_touch(const touch_event_t *event,int64_t now)
     last_press=now; ++tap_count;
     int x=event->x,y=event->y;
     if (page==HOME) {
+        if (space_timer_touch(x,y,now)) return;
         bool visible=now<controls_until;
         controls_until=now+8000000;
         if (!visible) {

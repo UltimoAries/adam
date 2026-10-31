@@ -349,7 +349,7 @@ static void command(char *line)
     } else if (n==2 && !strcmp(args[0],"touch") && !strcmp(args[1],"off")) {
         touch_logging=false; printf("OK touch logging off\n");
     } else if (n==1 && strcmp(args[0],"status")==0) {
-        printf("OK status version=27 mode=%s size=360x360 last_fill=#%06X brightness=%u "
+        printf("OK status version=28 mode=%s size=360x360 last_fill=#%06X brightness=%u "
                "rotation=%u mirror=%d,%d display=%d lcd_id=%02X%02X%02X%02X "
                "qspi_hz=40000000 frames=%lu fps=%.1f target_fps=%u render_us=%lu "
                "transfer_us=%lu psram_free=%u\n",
@@ -386,6 +386,15 @@ static void command(char *line)
         space_preview(n==2?-1:a*60+b,esp_timer_get_time());
         ui_mode=true;touch_logging=false;ui_page(false);
         printf("OK sky %s\n",n==2?"live":"sky preview (60 seconds)");
+    } else if (n==2 && !strcmp(args[0],"timer") && !strcmp(args[1],"clear")) {
+        space_timer_preview(-1,NULL,esp_timer_get_time());
+        ui_mode=true;touch_logging=false;ui_page(false);
+        printf("OK timer clear\n");
+    } else if ((n==3 || n==4) && !strcmp(args[0],"timer") && !strcmp(args[1],"preview") &&
+               number(args[2],0,86400,&a)) {
+        space_timer_preview(a,n==4?args[3]:"TIMER",esp_timer_get_time());
+        ui_mode=true;touch_logging=false;ui_page(false);
+        printf("OK timer preview %d\n",a);
     } else if (n==3 && !strcmp(args[0],"sky") && !strcmp(args[1],"weather") &&
                (!strcmp(args[2],"live") || number(args[2],0,99,&a))) {
         space_weather_preview(!strcmp(args[2],"live")?-1:a,esp_timer_get_time());
@@ -431,6 +440,7 @@ static void command(char *line)
                "wake status | wake enable 0/1 | mic status/diagnose/stop/clear | mic record 100..15000 | mic gain 0..36(step3) | "
                "mic download (binary) | mic play 1/2 | audio status/clocks/test/stop | audio loopback 0/1 | "
                "audio tone 100..4000 100..30000 | volume 0..100 | sky live/HH MM | sky weather live/CODE | "
+               "timer preview SEC [LABEL] | timer clear | "
                "status | ui status | ui tap X Y | menu home/settings | touch status | touch target X Y | "
                "touch off | snapshot (binary) | red | fill RRGGBB | brightness 0..100 | "
                "pattern grid/colors | rotation 0/90/180/270 | mirror 0/1 0/1 | "
@@ -446,7 +456,7 @@ void app_main(void)
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb_cfg));
     usb_serial_jtag_vfs_use_driver();
     setvbuf(stdout,NULL,_IONBF,0);
-    printf("Display UI v27: softer LLM ring glow, blue rain, quiet listening cue, Waveshare 1.85C V2\n");
+    printf("Display UI v28: countdown timer bars, 2-tap cancel & 1-tap silence, Waveshare 1.85C V2\n");
     preferences_init();
     init_display();
     headend_init();
@@ -485,6 +495,7 @@ void app_main(void)
         }
         preferences_tick(now);
         metrics_tick(now);
+        headend_timer_tick(now);
         if ((ui_mode || home_mode) && display_on && now>=next_frame) {
             if (ui_mode) ui_render(now); else space_render(now,SPACE_IDLE,false);
             render_us=esp_timer_get_time()-now;

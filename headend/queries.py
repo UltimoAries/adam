@@ -1,6 +1,6 @@
 """Small, explicit information handlers. No remote speech, LLM, or device actions."""
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 import math
 import re
@@ -22,6 +22,30 @@ def normalized(text):
 US_STATES = dict(zip(
     'AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC'.split(),
     ('Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming|District of Columbia').split('|')))
+
+_WEEKDAYS = {
+    'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+    'friday': 4, 'saturday': 5, 'sunday': 6,
+}
+_MONTHS = {
+    'january': 1, 'jan': 1, 'february': 2, 'feb': 2, 'march': 3, 'mar': 3,
+    'april': 4, 'apr': 4, 'may': 5, 'june': 6, 'jun': 6, 'july': 7, 'jul': 7,
+    'august': 8, 'aug': 8, 'september': 9, 'sep': 9, 'sept': 9,
+    'october': 10, 'oct': 10, 'november': 11, 'nov': 11, 'december': 12, 'dec': 12,
+}
+_FIXED_HOLIDAYS = {
+    'new year': (1, 1, "New Year's Day"),
+    'new years': (1, 1, "New Year's Day"),
+    'new years day': (1, 1, "New Year's Day"),
+    'valentine': (2, 14, "Valentine's Day"),
+    'valentines': (2, 14, "Valentine's Day"),
+    'valentines day': (2, 14, "Valentine's Day"),
+    'halloween': (10, 31, 'Halloween'),
+    'christmas': (12, 25, 'Christmas'),
+    'christmas day': (12, 25, 'Christmas'),
+    'christmas eve': (12, 24, 'Christmas Eve'),
+    'new years eve': (12, 31, "New Year's Eve"),
+}
 
 
 def search_name(name):
@@ -89,6 +113,106 @@ class QueryRequest(BaseModel):
 
 class WeatherUnavailable(Exception):
     pass
+
+
+def _parse_calendar_target(raw: str, today: date) -> tuple[date, str] | None:
+    key = normalized(raw)
+    if key in _FIXED_HOLIDAYS:
+        month, day_num, label = _FIXED_HOLIDAYS[key]
+        target = date(today.year, month, day_num)
+        if target < today:
+            target = date(today.year + 1, month, day_num)
+        return target, label
+    if key in _WEEKDAYS:
+        target_wd = _WEEKDAYS[key]
+        delta = (target_wd - today.weekday()) % 7
+        if delta == 0:
+            delta = 7
+        target = today + timedelta(days=delta)
+        return target, target.strftime('%A')
+    m = re.fullmatch(
+        r'([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(\d{4}))?',
+        key,
+    )
+    if m and m.group(1) in _MONTHS:
+        month = _MONTHS[m.group(1)]
+        day_num = int(m.group(2))
+        explicit_year = int(m.group(3)) if m.group(3) else None
+        if explicit_year is not None:
+            if not 1900 <= explicit_year <= 2200:
+                raise ValueError('Choose a year between 1900 and 2200.')
+            target = date(explicit_year, month, day_num)
+            return target, f"{target.strftime('%B')} {target.day}, {target.year}"
+        for yr in (today.year, today.year + 1, today.year + 4):
+            try:
+                candidate = date(yr, month, day_num)
+            except ValueError:
+                continue
+            if candidate >= today:
+                return candidate, f"{candidate.strftime('%B')} {candidate.day}"
+        raise ValueError('That calendar date is not valid.')
+    return None
+
+
+def time_date_intent(text: str) -> dict | None:
+    """Match local/world clock, current date, and calendar day-count questions."""
+    if not isinstance(text, str) or not text.strip() or len(text) > 300:
+        return None
+    cleaned = text.replace('\u2019', "'").strip()
+    cleaned = re.sub(r'^\s*(?:(?:hey|okay|ok)[ ,]+)?(?:jarvis|adam)\b[\s,.:!?-]*', '', cleaned, flags=re.I)
+    cleaned = re.sub(r'^\s*(?:please[ ,]+)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:tell\s+me\s+)?', '', cleaned, flags=re.I)
+    cleaned = cleaned.strip().rstrip('.!?').strip()
+    if not cleaned:
+        return None
+    lower = normalized(cleaned)
+    if re.search(r'\b(?:timer|timers|left|remaining|weather|forecast|temperature|rain|snow)\b', lower):
+        return None
+
+    # Local or world clock
+    time_patterns = (
+        r'(?:what time is it|what is the (?:current |local )?time|whats the (?:current |local )?time|what s the (?:current |local )?time|current time|time)(?: (?:right now|now))?(?: in (.+))?',
+        r'what is the time in (.+)',
+    )
+    for pat in time_patterns:
+        m = re.fullmatch(pat, lower)
+        if m:
+            raw_place = ''
+            if m.lastindex and m.group(1):
+                # Recover original casing/punctuation for place search
+                loc_match = re.search(r'\bin\s+(.+)$', cleaned, re.I)
+                raw_place = (loc_match.group(1) if loc_match else m.group(1)).strip(' ,.!?')
+                raw_place = re.sub(r'\b(?:right now|now|please)\b', '', raw_place, flags=re.I).strip(' ,.!?')
+            if normalized(raw_place) in ('', 'here', 'home', 'my location'):
+                raw_place = ''
+            return dict(kind='time', place=raw_place)
+
+    # Current or tomorrow's date / day of week
+    if re.fullmatch(
+        r'(?:what day is (?:it|today)|what is (?:today|todays|today s) date|whats (?:today|todays|today s) date|'
+        r'what s (?:today|todays|today s) date|what is the date(?: today)?|whats the date(?: today)?|'
+        r'what s the date(?: today)?|what day of the week is (?:it|today)|todays date|today s date)',
+        lower,
+    ):
+        return dict(kind='date', offset_days=0)
+
+    if re.fullmatch(
+        r'(?:what day is tomorrow|what is (?:tomorrows|tomorrow s) date|whats (?:tomorrows|tomorrow s) date|'
+        r'what s (?:tomorrows|tomorrow s) date|what is the date tomorrow)',
+        lower,
+    ):
+        return dict(kind='date', offset_days=1)
+
+    # Days until <target>
+    m = re.fullmatch(r'(?:how many )?days until (.+)', lower)
+    if m:
+        return dict(kind='days_until', target=m.group(1).strip())
+
+    # Day of week for a calendar date ("what day of the week is november 15 2026")
+    m = re.fullmatch(r'what day(?: of the week)? (?:is|was|will be) (.+)', lower)
+    if m and m.group(1) not in ('it', 'today', 'tomorrow'):
+        return dict(kind='weekday_of', target=m.group(1).strip())
+
+    return None
 
 
 def weather_intent(text):
@@ -192,6 +316,7 @@ class QueryService:
         return QuerySettings.model_validate_json(row[0]) if row else QuerySettings()
 
     def save(self, options):
+        options = QuerySettings.model_validate(options.model_dump())
         if options.voice_id:
             self.voices.registry.resolve(options.voice_id)
         with self.state.db() as db:
@@ -210,6 +335,9 @@ class QueryService:
         for place in settings.locations:
             if key in {normalized(s) for s in [place.name, *place.aliases]}:
                 return place
+        city_matches = [p for p in settings.locations if normalized(p.name.split(',')[0]) == key]
+        if len(city_matches) == 1:
+            return city_matches[0]
         places = self.provider.search(name)
         # Search is prefix-based; a city and its airport are not two cities.
         city = normalized(search_name(name).split(',')[0])
@@ -222,8 +350,76 @@ class QueryService:
             raise WeatherUnavailable('That location is ambiguous. Please use a saved location name or a city and state.')
         return places[0]
 
+    def _local_now(self, place: Location) -> datetime:
+        stamp = self.provider.clock()
+        if place.timezone:
+            return datetime.fromtimestamp(stamp, ZoneInfo(place.timezone))
+        return datetime.fromtimestamp(stamp).astimezone()
+
+    @staticmethod
+    def _spoken_clock(dt: datetime) -> str:
+        hour = dt.hour % 12 or 12
+        period = 'PM' if dt.hour >= 12 else 'AM'
+        return f'{hour}:{dt.minute:02d} {period}'
+
+    def _answer_time_date(self, intent: dict, options: QuerySettings, unit_id: str | None) -> dict:
+        base = dict(status='answered', voice_id=options.voice_id, source='System Clock', source_url='')
+        try:
+            if intent['kind'] == 'time':
+                if intent['place']:
+                    place = self.resolve(intent['place'], options, unit_id)
+                    if not place.timezone:
+                        return dict(
+                            base,
+                            status='unavailable',
+                            text='Time zone information is unavailable for that location.',
+                        )
+                    dt = self._local_now(place)
+                    label = place.name.split(',')[0][:35]
+                    return dict(
+                        base,
+                        text=f"In {label}, it is {self._spoken_clock(dt)} on {dt.strftime('%A, %B')} {dt.day}.",
+                        location=place.name,
+                        source=self.provider.source,
+                        source_url=self.provider.source_url,
+                    )
+                place = self.default_place(options, unit_id)
+                dt = self._local_now(place)
+                return dict(base, text=f"It is {self._spoken_clock(dt)} on {dt.strftime('%A, %B')} {dt.day}.", location=place.name)
+
+            place = self.default_place(options, unit_id)
+            today = self._local_now(place).date()
+            if intent['kind'] == 'date':
+                target = today + timedelta(days=intent['offset_days'])
+                prefix = 'Tomorrow is' if intent['offset_days'] == 1 else 'Today is'
+                return dict(base, text=f"{prefix} {target.strftime('%A, %B')} {target.day}, {target.year}.", location=place.name)
+
+            parsed = _parse_calendar_target(intent['target'], today)
+            if not parsed:
+                return dict(base, status='ignored', text='')
+            target_date, label = parsed
+            if intent['kind'] == 'weekday_of':
+                verb = 'was' if target_date < today else 'is'
+                return dict(base, text=f"{label} {verb} a {target_date.strftime('%A')}.")
+            days = (target_date - today).days
+            if days == 0:
+                return dict(base, text=f'Today is {label}.')
+            if days == 1:
+                return dict(base, text=f"Tomorrow is {label} ({target_date.strftime('%B')} {target_date.day}).")
+            return dict(
+                base,
+                text=f"There are {days} days until {label} ({target_date.strftime('%A, %B')} {target_date.day}).",
+            )
+        except WeatherUnavailable as exc:
+            return dict(base, status='unavailable', text=str(exc))
+        except ValueError as exc:
+            return dict(base, status='unavailable', text=str(exc))
+
     def answer(self, text, unit_id=None):
         options = self.settings()
+        td_intent = time_date_intent(text)
+        if td_intent:
+            return self._answer_time_date(td_intent, options, unit_id)
         intent = weather_intent(text)
         result = dict(status='ignored', text='', source='', source_url='')
         if not options.enabled or not intent:
@@ -254,7 +450,6 @@ class QueryService:
                 daily = data['daily']
                 i = 1 if intent['day']=='tomorrow' else 0
                 expected = datetime.fromtimestamp(self.provider.clock()+data['utc_offset_seconds'], timezone.utc).date()
-                from datetime import timedelta
                 if daily['time'][i] != (expected+timedelta(days=i)).isoformat():
                     raise WeatherUnavailable('The weather source returned an old forecast. Please try again shortly.')
                 condition = CONDITIONS[daily['weather_code'][i]]
@@ -286,29 +481,34 @@ class QueryService:
         # Only new, successful wake sessions generate automatic answers. Bench
         # retranscriptions and remote Listen checks never cause surprise replies.
         if self.closed or job['status']!='done' or entry['trigger']!='wake':
-            return
-        if not self.settings().enabled or not weather_intent(job['text']):
+            return False
+        is_time = bool(time_date_intent(job['text']))
+        is_weather = bool(self.settings().enabled and weather_intent(job['text']))
+        if not is_time and not is_weather:
             entry['reply'] = dict(status='ignored', text='')
-            return
+            return False
         if not self.slots.acquire(blocking=False):
             entry['reply'] = dict(status='error', text='', error='Information reply queue is full')
-            return
+            return True
         entry['reply'] = dict(status='working', text='')
         try:
-            self.pool.submit(self._run, entry, job['text'])
+            self.pool.submit(self._run, entry, job['text'], is_time)
         except RuntimeError:
             self.slots.release()
             entry['reply'] = dict(status='error', text='', error='Head-end is stopping')
+        return True
 
-    def _run(self, entry, text):
+    def _run(self, entry, text, is_time=False):
         try:
             if time.time()-entry['started']>90:
                 raise ValueError('Question expired while waiting for processing')
             started=time.monotonic()
             result = self.answer(text, entry['unit_id'])
             result['lookup_ms']=round((time.monotonic()-started)*1000)
-            if not self.closed and self.settings().enabled:
+            if not self.closed and result.get('text') and (is_time or self.settings().enabled):
                 entry['reply'] = self.deliver(result, entry['unit_id'])
+            else:
+                entry['reply'] = result
         except Exception as exc:
             entry['reply'] = dict(status='error', text='', error=str(exc)[:160])
         finally:

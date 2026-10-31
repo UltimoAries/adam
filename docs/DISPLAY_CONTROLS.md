@@ -1,11 +1,12 @@
 # Display and USB serial controls
 
-Firmware v27 boots into the [illustrated sky home screen](SPACE_PANEL.md) with
+Firmware v28 boots into the [illustrated sky home screen](SPACE_PANEL.md) with
 six centered rows, white black-outlined lettering, live weather animations,
-green/blue activity mist and the perimeter LLM availability ring. Tap once to
-reveal volume, brightness and navigation controls; they hide automatically after
-eight seconds. Saved volume, brightness, wake enable state, Wi-Fi credentials and
-head-end pairing survive reboot.
+stacked countdown timer bars when active, green/blue activity mist and the
+perimeter LLM availability ring. Tap once to reveal volume, brightness and
+navigation controls; they hide automatically after eight seconds. Saved volume,
+brightness, wake enable state, Wi-Fi credentials and head-end pairing survive
+reboot.
 
 USB diagnostics and control commands are newline-terminated ASCII sent over the
 ESP32-S3 native USB Serial/JTAG port (for example `COM6` on Windows or
@@ -28,6 +29,7 @@ the most recent animated interval when viewing a static diagnostic canvas.
 | `ui tap X Y` | Inject a logical-coordinate (`0..359`) press into the active UI |
 | `sky HH MM` / `sky live` | Preview an idle time-of-day sky palette for 60 seconds / restore live local time |
 | `sky weather CODE` / `sky weather live` | Preview a WMO background weather scene for 60 seconds / restore live weather (text readings stay live) |
+| `timer preview SEC [LABEL]` / `timer clear` | Add a diagnostic countdown timer bar on Home (`0..86400` s) / clear preview timers |
 | `brightness 0..100` | Set backlight PWM (`0` turns the backlight off; touch UI enforces a `10` floor) |
 | `fps 5..30` | Set target animation frame-rate limit |
 | `display on` / `display off` | Enable or blank the ST77916 panel while retaining scene state and brightness |

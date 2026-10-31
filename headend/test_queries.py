@@ -118,6 +118,48 @@ class QueryTests(unittest.TestCase):
             self.assertEqual(self.service.answer('Weather in Portland Oregon?')['location'],city.name)
         self.assertIn('current weather, today, or tomorrow',self.service.answer('What was the weather last night?')['text'])
 
+    def test_local_time_date_world_clock_and_calendar_math(self):
+        fixed = datetime(2026, 10, 30, 20, 15, tzinfo=timezone.utc)  # 1:15 PM PDT in Seattle
+        self.provider.clock = lambda: fixed.timestamp()
+        config = self.service.settings()
+        config.locations.append(Location(name='Paris, France', latitude=48.8566, longitude=2.3522, timezone='Europe/Paris'))
+        config.device_locations['c' * 16] = 'Paris, France'
+        config.enabled = False  # Local clock & calendar math still work when weather is disabled!
+        self.service.save(config)
+
+        local_time = self.service.answer("Hey Adam, what time is it?")
+        self.assertEqual(local_time['status'], 'answered')
+        self.assertIn('1:15 PM', local_time['text'])
+
+        paris_unit_time = self.service.answer('What time is it?', 'c' * 16)
+        self.assertIn('9:15 PM', paris_unit_time['text'])
+
+        world_saved = self.service.answer('What time is it in Paris?')
+        self.assertIn('Paris', world_saved['text'])
+        self.assertIn('9:15 PM', world_saved['text'])
+
+        with patch.object(
+            self.provider,
+            'search',
+            return_value=[Location(name='Tokyo, Japan', latitude=35.6762, longitude=139.6503, timezone='Asia/Tokyo')],
+        ):
+            tokyo = self.service.answer('What time is it in Tokyo?')
+            self.assertEqual(tokyo['status'], 'answered')
+            self.assertEqual(tokyo['location'], 'Tokyo, Japan')
+            self.assertIn('In Tokyo, it is 5:15 AM', tokyo['text'])
+
+        today = self.service.answer("What's today's date?")
+        self.assertIn('Friday, October 30, 2026', today['text'])
+
+        tomorrow = self.service.answer('What day is tomorrow?')
+        self.assertIn('Saturday, October 31, 2026', tomorrow['text'])
+
+        weekday = self.service.answer('What day of the week is July 4, 2027?')
+        self.assertIn('Sunday', weekday['text'])
+
+        until_christmas = self.service.answer('How many days until Christmas?')
+        self.assertIn('56 days', until_christmas['text'])
+
 
 class QueryIntegrationTests(unittest.TestCase):
     tearDown=test_fleet.FleetTests.tearDown

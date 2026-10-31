@@ -1,8 +1,9 @@
-# Information queries and weather
+# Information queries, time, calendar and weather
 
-ADAM answers wake-triggered weather questions locally using Open-Meteo forecasts
-and Piper speech synthesis. With Firmware v27 (using silence-ended wake capture
-and warm speech workers introduced in firmware v13 / head-end v0.6), say:
+ADAM answers wake-triggered time, world-clock, calendar, countdown-timer and
+weather questions locally using Piper speech synthesis and Open-Meteo forecasts.
+With Firmware v28 (using silence-ended wake capture and warm speech workers
+introduced in firmware v13 / head-end v0.6), say:
 
 **“Hey Adam, what's the weather in Seattle, Washington?”**
 
@@ -35,9 +36,26 @@ signed in as an administrator.
   an online unit synthesizes and delivers a spoken test reply.
 - Settings persist in `query_settings` inside `headend/data/fleet.sqlite3`.
 
-Examples: “What's the weather?”, “What's the temperature at home?”, “What's
-tomorrow's forecast in Seattle?”, “Will it rain today in Portland, Oregon?”
-Current answers report conditions, temperature and apparent temperature;
+Examples:
+- **Weather:** “What's the weather?”, “What's the temperature at home?”, “What's
+  tomorrow's forecast in Seattle?”, “Will it rain today in Portland, Oregon?”
+- **Time, world clock & calendar:** “What time is it?”, “What time is it in
+  Tokyo?”, “What's today's date?”, “What day is tomorrow?”, “How many days until
+  Christmas?”, “What day of the week is July 4, 2027?”
+- **Named countdown timers (`headend/timers.py`):** “Set a 10 minute timer for
+  pasta”, “Set a 45 second tea timer”, “How much time is left on the pasta
+  timer?”, “Add 2 minutes to the pasta timer”, “Cancel the pasta timer”, “Stop”
+  (while ringing).
+
+Local time, date and calendar math use each speaker unit's configured IANA
+timezone and continue to work even when Open-Meteo weather queries are disabled.
+World-clock questions resolve saved locations first and fall back to Open-Meteo
+city geocoding to obtain the target city's IANA timezone. Indoor room temperature
+questions (such as “What's the temperature in the bedroom?”) check imported Home
+Assistant temperature sensors first before falling back to Open-Meteo outdoor
+weather.
+
+Current weather answers report conditions, temperature and apparent temperature;
 today/tomorrow answers report conditions, high/low temperatures and precipitation
 probability. Requests for unsupported forecast horizons receive a clear
 explanation rather than current conditions presented as a future forecast.

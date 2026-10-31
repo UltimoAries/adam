@@ -327,6 +327,44 @@ class HomeAssistantTests(unittest.TestCase):
             weather.assert_called_once()
         self.assertFalse(self.remote.calls)
 
+    def test_indoor_temperature_checks_home_assistant_before_weather_and_falls_back_for_cities(self):
+        self.config['auto_import'] = True
+        self.enable()
+        sensor_row = dict(
+            entity_id='sensor.bedroom_temperature',
+            state='70.2',
+            attributes=dict(friendly_name='Bedroom Temperature', device_class='temperature', unit_of_measurement='°F'),
+        )
+        original_handle = self.remote.handle
+        def handle_with_sensor(request):
+            if request.url.path == '/api/states':
+                base = json.loads(original_handle(request).content)
+                return httpx.Response(200, json=base + [sensor_row])
+            if request.url.path == '/api/states/sensor.bedroom_temperature':
+                return httpx.Response(200, json=sensor_row)
+            return original_handle(request)
+        self.service.client = HomeAssistantClient(httpx.MockTransport(handle_with_sensor))
+        self.assertEqual(self.client.post('/api/home-assistant/inventory/refresh').status_code, 200)
+
+        class BedroomTempSTT:
+            def transcribe(inner, utterance):
+                return Transcript(utterance.session_id, "Hey Adam, what's the temperature in the bedroom?")
+        self.app.state.jobs.factory = BedroomTempSTT
+        with patch.object(self.app.state.fleet.queries, 'submit') as weather:
+            result = self.stream(**{'X-Trigger': 'wake', 'X-Wake-Model': 'hey_adam-test'}).json()
+            reply = self.wait_reply(result['session_id'])
+            self.assertEqual(reply['status'], 'queued', reply)
+            self.assertEqual(reply['text'], 'Bedroom Temperature is 70.2 degrees Fahrenheit.')
+            weather.assert_not_called()
+
+        # City temperature with no matching indoor sensor falls back to Open-Meteo weather handler:
+        with patch.object(self.app.state.fleet.queries, 'submit') as weather:
+            self.app.state.fleet.transcription_done(
+                dict(id='city-temp', unit_id=self.unit['id'], trigger='wake', started=time.time()),
+                dict(status='done', text="Hey Adam, what's the temperature in Seattle?"),
+            )
+            weather.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -74,8 +74,15 @@ class HomeAssistantInventory:
         for row in self.rows(settings):
             if not row['imported'] or not row['enabled'] or not row['present']: continue
             for name in row['spoken_names']:
-                action = intent(text, name)
+                action = intent(text, name, row['entity_id'], row.get('attributes'))
                 if action:
                     result.append((row, action))
                     break
+        # If multiple read-only temperature/sensor matches occur because both a dedicated
+        # sensor ("Bedroom Temperature") and a thermostat ("Bedroom") match a room query,
+        # prefer the dedicated sensor while preserving strict ambiguity on all actions.
+        if len(result) > 1 and all(act[0] == 'status' for _, act in result):
+            sensors = [(r, a) for r, a in result if r['entity_id'].startswith(('sensor.', 'binary_sensor.'))]
+            if len(sensors) == 1:
+                return sensors
         return result

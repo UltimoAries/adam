@@ -177,5 +177,55 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual(self.client.request(method,'/api/home-assistant/inventory'+path,json=body).status_code,401)
         self.assertFalse(self.actions)
 
+    def test_curated_sensors_binary_sensors_spoken_states_and_summaries(self):
+        self.rows.extend([
+            dict(entity_id='sensor.nursery_temp', state='71.42', attributes=dict(
+                friendly_name='Nursery Temperature', device_class='temperature', unit_of_measurement='°F')),
+            dict(entity_id='sensor.nursery_humidity', state='46', attributes=dict(
+                friendly_name='Nursery Humidity', device_class='humidity', unit_of_measurement='%')),
+            dict(entity_id='sensor.router_rssi', state='-58', attributes=dict(
+                friendly_name='Router Signal', device_class='signal_strength', unit_of_measurement='dBm')),
+            dict(entity_id='binary_sensor.patio_door', state='on', attributes=dict(
+                friendly_name='Patio Door', device_class='door')),
+            dict(entity_id='binary_sensor.office_window', state='off', attributes=dict(
+                friendly_name='Office Window', device_class='window')),
+            dict(entity_id='binary_sensor.sink_leak', state='off', attributes=dict(
+                friendly_name='Sink Leak', device_class='moisture')),
+        ])
+        rows = self.refresh()
+        self.assertTrue(rows['sensor.nursery_temp']['imported'])
+        self.assertEqual(rows['sensor.nursery_temp']['capabilities'], ['read'])
+        self.assertTrue(rows['sensor.nursery_humidity']['imported'])
+        self.assertTrue(rows['binary_sensor.patio_door']['imported'])
+        self.assertTrue(rows['binary_sensor.sink_leak']['imported'])
+        self.assertFalse(rows['sensor.battery']['imported'])
+        self.assertFalse(rows['sensor.router_rssi']['imported'])
+
+        # Direct and room-first sensor reads:
+        self.assertEqual(self.command("What's the temperature in the nursery?")['text'],
+                         'Nursery Temperature is 71.4 degrees Fahrenheit.')
+        self.assertEqual(self.command('How warm is the nursery?')['text'],
+                         'Nursery Temperature is 71.4 degrees Fahrenheit.')
+        self.assertEqual(self.command("What's the humidity in the nursery?")['text'],
+                         'Nursery Humidity is 46 percent.')
+        self.assertEqual(self.command('Is Patio Door open?')['text'], 'Patio Door is open.')
+        self.assertEqual(self.command('Is Sink Leak wet?')['text'], 'Sink Leak is dry.')
+
+        # Multi-entity bedtime/departure summaries:
+        openings = self.command('Are any doors or windows open?')
+        self.assertEqual(openings['status'], 'answered')
+        self.assertIn('Patio Door', openings['text'])
+
+        for r in self.rows:
+            if r['entity_id'] == 'binary_sensor.patio_door':
+                r['state'] = 'off'
+        all_closed = self.command('Are all doors and windows closed?')
+        self.assertEqual(all_closed['text'], 'All 3 doors and windows are closed.')
+
+        self.assertEqual(self.command('Are all doors locked?')['text'], 'Front Door is locked.')
+        self.assertEqual(self.command('Are any lights on?')['text'], 'All 2 lights are off.')
+        self.assertEqual(self.command('Are there any water leaks?')['text'], 'Sink Leak is dry.')
+        self.assertEqual(self.actions, [])
+
 
 if __name__=='__main__': unittest.main()

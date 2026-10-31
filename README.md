@@ -6,10 +6,12 @@ speaker/microphone unit and a Python head-end.
 
 ## Features
 
-- **Illustrated round-display home screen (Firmware v27):** Live local clock and
-  cached weather over an animated day/night sky with rain, drizzle, and snow
-  particles, green listening mist, blue playback mist, touch settings menus, and
-  a glowing idle edge ring showing GPU vs. local LLM readiness.
+- **Illustrated round-display home screen & countdown timers (Firmware v28):**
+  Live local clock and cached weather over an animated day/night sky with rain,
+  drizzle, and snow particles, green listening mist, blue playback mist, stacked
+  on-screen countdown timer bars (2-tap `[X]` → `[OK?]` cancel while running,
+  1-tap anywhere to silence when ringing), touch settings menus, and a glowing
+  idle edge ring showing GPU vs. local LLM readiness.
 - **On-device wake word & low-latency capture:** Embedded experimental
   **Hey Adam** microWakeWord model, quieter 20 dB trigger chime, rolling
   two-second pre-roll buffer, and silence-ended Wi-Fi audio streaming.
@@ -17,12 +19,20 @@ speaker/microphone unit and a Python head-end.
   `faster-whisper` transcription and persistent Piper ONNX speech synthesis, plus
   optional LAN offload to a GPU host (Speaches Whisper `large-v3-turbo` and
   Ollama `qwen3.5:9b`) with automatic per-request local fallback.
-- **Home Assistant integration (`/home-assistant`):** Import entities, assign
-  persistent spoken names and aliases, use capability-based web controls, and
-  run spoken light/switch commands with spoken confirmations.
-- **Weather & information answers (`/queries`):** Spoken current weather and
-  forecasts via Open-Meteo in your chosen Piper voice, with per-unit or default
-  home locations and aliases.
+- **Named countdown timers (`/` & voice):** Set, extend, check, and cancel up to
+  8 named countdown timers per speaker unit by voice or from the dashboard, with
+  local monotonic countdowns that survive brief Wi-Fi drops, originating-speaker
+  display/ringing, and fleet-wide status/cancel by name.
+- **Home Assistant integration (`/home-assistant`):** Import controllable devices
+  and curated household sensors (temperature, humidity, air quality, power/energy,
+  doors/windows, locks, motion, leak sensors), assign persistent spoken names and
+  aliases, ask indoor room sensor and bedtime summary questions (*"What's the
+  temperature in the bedroom?"*, *"Are any doors or windows open?"*), and run
+  spoken commands with confirmations.
+- **Time, world clock, calendar & weather answers (`/queries`):** Spoken local
+  time and date per speaker timezone, world clock lookups (*"What time is it in
+  Tokyo?"*), calendar date math (*"How many days until Christmas?"*), and
+  Open-Meteo current weather and forecasts in your chosen Piper voice.
 - **Multi-unit paging & dashboard (`/`):** Pair speaker units over USB, send
   typed or browser-recorded voice announcements with five-minute expiry and
   playback acknowledgements, and explore the **Monitor Map** 3D floor-plan preview.

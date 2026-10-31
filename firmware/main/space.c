@@ -1,4 +1,5 @@
 #include "space.h"
+#include "audio.h"
 #include "graphics.h"
 #include "headend.h"
 #include "esp_heap_caps.h"
@@ -7,6 +8,8 @@
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
+
+enum { TIMER_RING_WINDOW_US = 60000000LL, MAX_PREVIEW_TIMERS = 4 };
 
 static uint16_t *ripple;
 static uint8_t wave[256];
@@ -17,6 +20,10 @@ static int preview_minute;
 static int64_t preview_until;
 static int preview_weather;
 static int64_t weather_preview_until;
+static headend_timer_t preview_timers[MAX_PREVIEW_TIMERS];
+static unsigned preview_timer_count,preview_seq,timer_offset;
+static char confirm_id[17];
+static int64_t confirm_until;
 static const unsigned ink=0xFFFFFF,outline=0x000000;
 static const unsigned CREAM=0xFFF2D4;
 
@@ -31,6 +38,13 @@ static void label(int x,int y,int scale,unsigned color,const char *value)
 
 static void text(int x,int y,int scale,unsigned color,const char *value)
 { label(x-((int)strlen(value)*6-1)*scale/2,y,scale,color,value); }
+
+static void rounded_box(int x,int y,int w,int h,int r,unsigned color)
+{
+    gfx_rect(x+r,y,w-2*r,h,color); gfx_rect(x,y+r,w,h-2*r,color);
+    gfx_circle(x+r,y+r,r,color,true); gfx_circle(x+w-r-1,y+r,r,color,true);
+    gfx_circle(x+r,y+h-r-1,r,color,true); gfx_circle(x+w-r-1,y+h-r-1,r,color,true);
+}
 
 static unsigned blend(unsigned a,unsigned b,int amount)
 {
@@ -92,6 +106,215 @@ void space_weather_preview(int code,int64_t now)
 {
     preview_weather=code;
     weather_preview_until=code>=0?now+60000000:0;
+}
+
+void space_timer_preview(int seconds,const char *name,int64_t now)
+{
+    if (seconds<0) {
+        preview_timer_count=0;
+        confirm_id[0]=0;
+        confirm_until=0;
+        timer_offset=0;
+        return;
+    }
+    if (preview_timer_count==MAX_PREVIEW_TIMERS) {
+        memmove(&preview_timers[0],&preview_timers[1],(MAX_PREVIEW_TIMERS-1)*sizeof(preview_timers[0]));
+        --preview_timer_count;
+    }
+    headend_timer_t *dst=&preview_timers[preview_timer_count++];
+    snprintf(dst->id,sizeof(dst->id),"prev%u",++preview_seq);
+    const char *raw=(name && name[0])?name:"TIMER";
+    size_t i=0;
+    for (;raw[i] && i<sizeof(dst->label)-1;++i) {
+        unsigned char ch=(unsigned char)raw[i];
+        dst->label[i]=(ch>=32 && ch<=126)?(char)toupper(ch):' ';
+    }
+    dst->label[i]=0;
+    dst->duration_s=seconds>0?seconds:1;
+    dst->deadline_us=now+(int64_t)seconds*1000000LL;
+}
+
+static unsigned collect_timers(const headend_panel_t *p,int64_t now,
+                               headend_timer_t *out,bool *is_preview,unsigned max_out)
+{
+    unsigned pw=0;
+    for (unsigned i=0;i<preview_timer_count;++i) {
+        if (now-preview_timers[i].deadline_us<TIMER_RING_WINDOW_US)
+            preview_timers[pw++]=preview_timers[i];
+    }
+    preview_timer_count=pw;
+
+    unsigned count=0;
+    for (unsigned i=0;i<p->timer_count && count<max_out;++i) {
+        if (now-p->timers[i].deadline_us<TIMER_RING_WINDOW_US) {
+            out[count]=p->timers[i];
+            if (is_preview) is_preview[count]=false;
+            ++count;
+        }
+    }
+    for (unsigned i=0;i<preview_timer_count && count<max_out;++i) {
+        out[count]=preview_timers[i];
+        if (is_preview) is_preview[count]=true;
+        ++count;
+    }
+    for (unsigned i=1;i<count;++i) {
+        headend_timer_t cur=out[i];
+        bool cur_prev=is_preview?is_preview[i]:false;
+        unsigned j=i;
+        while (j>0 && out[j-1].deadline_us>cur.deadline_us) {
+            out[j]=out[j-1];
+            if (is_preview) is_preview[j]=is_preview[j-1];
+            --j;
+        }
+        out[j]=cur;
+        if (is_preview) is_preview[j]=cur_prev;
+    }
+    return count;
+}
+
+bool space_timer_ringing(int64_t now)
+{
+    for (unsigned i=0;i<preview_timer_count;++i) {
+        int64_t elapsed=now-preview_timers[i].deadline_us;
+        if (elapsed>=0 && elapsed<TIMER_RING_WINDOW_US) return true;
+    }
+    headend_panel_t p;headend_panel(&p);
+    for (unsigned i=0;i<p.timer_count;++i) {
+        int64_t elapsed=now-p.timers[i].deadline_us;
+        if (elapsed>=0 && elapsed<TIMER_RING_WINDOW_US) return true;
+    }
+    return false;
+}
+
+static void timer_bar_rect(unsigned vis,unsigned row,int *bx,int *by,int *bw,int *bh)
+{
+    *bx=82; *bw=196;
+    if (vis==1) { *by=230; *bh=38; }
+    else { *by=216+(int)row*40; *bh=36; }
+}
+
+bool space_timer_touch(int x,int y,int64_t now)
+{
+    if (space_timer_ringing(now)) {
+        unsigned pw=0;
+        for (unsigned i=0;i<preview_timer_count;++i) {
+            int64_t elapsed=now-preview_timers[i].deadline_us;
+            if (elapsed<0 || elapsed>=TIMER_RING_WINDOW_US)
+                preview_timers[pw++]=preview_timers[i];
+        }
+        preview_timer_count=pw;
+        headend_dismiss_ringing(now);
+        audio_stop();
+        confirm_id[0]=0;
+        confirm_until=0;
+        return true;
+    }
+    headend_panel_t p;headend_panel(&p);
+    headend_timer_t list[HEADEND_MAX_TIMERS+MAX_PREVIEW_TIMERS];
+    bool prev[HEADEND_MAX_TIMERS+MAX_PREVIEW_TIMERS];
+    unsigned count=collect_timers(&p,now,list,prev,HEADEND_MAX_TIMERS+MAX_PREVIEW_TIMERS);
+    if (!count) {
+        confirm_id[0]=0;
+        timer_offset=0;
+        return false;
+    }
+    if (confirm_id[0] && now>=confirm_until) confirm_id[0]=0;
+    unsigned vis=count<2?count:2;
+    if (count<=2) timer_offset=0;
+    else timer_offset%=count;
+    for (unsigned row=0;row<vis;++row) {
+        unsigned idx=(timer_offset+row)%count;
+        int bx,by,bw,bh;
+        timer_bar_rect(vis,row,&bx,&by,&bw,&bh);
+        if (x>=bx+bw-46 && x<bx+bw+4 && y>=by-2 && y<by+bh+2) {
+            if (confirm_id[0] && !strcmp(confirm_id,list[idx].id) && now<confirm_until) {
+                if (prev[idx]) {
+                    unsigned pw=0;
+                    for (unsigned i=0;i<preview_timer_count;++i)
+                        if (strcmp(preview_timers[i].id,list[idx].id)) preview_timers[pw++]=preview_timers[i];
+                    preview_timer_count=pw;
+                } else {
+                    headend_dismiss_timer(list[idx].id);
+                }
+                confirm_id[0]=0;
+                confirm_until=0;
+            } else {
+                snprintf(confirm_id,sizeof(confirm_id),"%s",list[idx].id);
+                confirm_until=now+3000000LL;
+            }
+            return true;
+        }
+        if (x>=bx-2 && x<bx+bw-46 && y>=by-2 && y<by+bh+2) {
+            bool was_armed=confirm_id[0]!=0;
+            confirm_id[0]=0;
+            if (count>2) {
+                timer_offset=(timer_offset+1)%count;
+                return true;
+            }
+            if (was_armed) return true;
+        }
+    }
+    return false;
+}
+
+static void draw_timer_bars(const headend_timer_t *list,unsigned count,int64_t now)
+{
+    if (confirm_id[0] && now>=confirm_until) confirm_id[0]=0;
+    unsigned vis=count<2?count:2;
+    if (count<=2) timer_offset=0;
+    else timer_offset%=count;
+    bool pulse=((now/350000LL)&1)!=0;
+    for (unsigned row=0;row<vis;++row) {
+        unsigned idx=(timer_offset+row)%count;
+        const headend_timer_t *t=&list[idx];
+        bool ringing=now>=t->deadline_us;
+        bool armed=!ringing && confirm_id[0] && !strcmp(confirm_id,t->id) && now<confirm_until;
+        int bx,by,bw,bh;
+        timer_bar_rect(vis,row,&bx,&by,&bw,&bh);
+        unsigned border=ringing?(pulse?0xFFE38E:0xF4BC62):armed?0xF4BC62:0x284D63;
+        unsigned fill_col=ringing?(pulse?0x3A260D:0x261909):0x0D1F2D;
+        rounded_box(bx,by,bw,bh,7,border);
+        rounded_box(bx+1,by+1,bw-2,bh-2,6,fill_col);
+
+        int px=bx+8,py=by+bh-4,pw=bw-16;
+        gfx_rect(px,py,pw,2,0x19364A);
+        if (ringing) gfx_rect(px,py,pw,2,0xF4BC62);
+        else {
+            int64_t total_us=(int64_t)(t->duration_s>0?t->duration_s:1)*1000000LL;
+            int64_t rem_us=t->deadline_us-now;
+            if (rem_us<0) rem_us=0;
+            if (rem_us>total_us) rem_us=total_us;
+            int fill_w=(int)(rem_us*pw/total_us);
+            if (fill_w>0) gfx_rect(px,py,fill_w,2,armed?0xF4BC62:0x40D9DC);
+        }
+
+        char hdr[40];
+        if (count>2) snprintf(hdr,sizeof(hdr),"%u/%u %.14s",idx+1,count,t->label);
+        else snprintf(hdr,sizeof(hdr),"%.18s",t->label);
+        gfx_text(bx+8,by+4,1,ringing?0xFFE38E:0x9ED8E8,hdr);
+
+        char rem_txt[16];
+        if (ringing) snprintf(rem_txt,sizeof(rem_txt),"00:00 DONE");
+        else {
+            int rem_s=(int)((t->deadline_us-now+999999LL)/1000000LL);
+            if (rem_s>=3600) snprintf(rem_txt,sizeof(rem_txt),"%d:%02d:%02d",rem_s/3600,(rem_s%3600)/60,rem_s%60);
+            else snprintf(rem_txt,sizeof(rem_txt),"%02d:%02d",rem_s/60,rem_s%60);
+        }
+        gfx_text(bx+8,by+14,2,ringing?(pulse?0xFFFFFF:0xFFE38E):0xFFFFFF,rem_txt);
+
+        int btn_x=bx+bw-42,btn_y=by+4,btn_w=38,btn_h=bh-10;
+        unsigned btn_edge=(ringing || armed)?0xF4BC62:0x284D63;
+        unsigned btn_fill=ringing?0x573912:armed?0x3D2A10:0x152E42;
+        rounded_box(btn_x,btn_y,btn_w,btn_h,5,btn_edge);
+        rounded_box(btn_x+1,btn_y+1,btn_w-2,btn_h-2,4,btn_fill);
+        if (ringing) {
+            gfx_text(btn_x+(btn_w-23)/2,btn_y+(btn_h-7)/2,1,0xFFE38E,"STOP");
+        } else if (armed) {
+            gfx_text(btn_x+(btn_w-17)/2,btn_y+(btn_h-7)/2,1,0xFFE38E,"OK?");
+        } else {
+            gfx_text(btn_x+(btn_w-10)/2,btn_y+(btn_h-14)/2,2,0xB8D4E3,"X");
+        }
+    }
 }
 
 static void sky_colors(int seconds,unsigned *top,unsigned *horizon,int *day,int *stars)
@@ -464,7 +687,11 @@ void space_render(int64_t now,space_state_t activity,bool controls)
     int start=180-(clock_width+period_width)/2;
     label(start,166,5,ink,clock);
     if (period[0]) label(start+clock_width+9,187,2,ink,period);
-    if (fresh) {
+    headend_timer_t active_timers[HEADEND_MAX_TIMERS+MAX_PREVIEW_TIMERS];
+    unsigned active_count=collect_timers(&p,now,active_timers,NULL,HEADEND_MAX_TIMERS+MAX_PREVIEW_TIMERS);
+    if (active_count>0) {
+        draw_timer_bars(active_timers,active_count,now);
+    } else if (fresh) {
         const char *description=condition(p.weather_code);
         int scale=strlen(description)<=13?3:2;
         int width=((int)strlen(description)*6-1)*scale;
@@ -472,11 +699,11 @@ void space_render(int64_t now,space_state_t activity,bool controls)
         weather_icon(left+20,237,p.weather_code,local_seconds<6*3600 || local_seconds>=19*3600);
         label(left+52,228,scale,ink,description);
         char temperature[12];snprintf(temperature,sizeof(temperature),"%d",p.temperature);
-        width=((int)strlen(temperature)*6-1)*4;int start=180-(width+36)/2;
-        label(start,272,4,ink,temperature);
-        gfx_circle(start+width+7,277,5,outline,true);
-        gfx_circle(start+width+7,277,3,ink,false);
-        label(start+width+18,279,3,ink,p.units=='C'?"C":"F");
+        width=((int)strlen(temperature)*6-1)*4;int tstart=180-(width+36)/2;
+        label(tstart,272,4,ink,temperature);
+        gfx_circle(tstart+width+7,277,5,outline,true);
+        gfx_circle(tstart+width+7,277,3,ink,false);
+        label(tstart+width+18,279,3,ink,p.units=='C'?"C":"F");
     } else {
         text(180,228,2,ink,!strcmp(p.weather_state,"disabled")?"WEATHER OFF":
             !strcmp(p.weather_state,"loading")?"CHECKING WEATHER":"WEATHER UNAVAILABLE");

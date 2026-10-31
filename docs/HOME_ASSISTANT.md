@@ -15,11 +15,16 @@ imported HA entities and the names of Adam speaker/display units.
 3. Choose **Main controls** or **All entities & sensors**, then **Import into Adam**.
    An imported entity immediately recognizes its default HA friendly name.
 4. Alternatively enable **Automatically import main controls**. Refresh imports
-   existing supported main controls, and the head-end discovers new ones every
-   minute while enabled. Explicitly removed devices stay removed. Configuration
-   entities and sensors can be imported individually; recognized Kasa LED,
-   auto-update/auto-off, emergency-heat and one-touch-locking switches are excluded
-   from automatic import. Unfamiliar switch settings cannot always be classified.
+   existing supported main controls plus curated household sensors (`sensor`
+   device classes `temperature`, `humidity`, `aqi`/`pm25`/`pm10`,
+   `carbon_dioxide`, `carbon_monoxide`, `volatile_organic_compounds`, `power`,
+   `energy`, and `binary_sensor` device classes `door`, `garage_door`, `window`,
+   `opening`, `lock`, `moisture`, `problem`, `smoke`, `gas`, `motion`,
+   `occupancy`), and discovers new ones every minute while enabled. Explicitly
+   removed devices stay removed. Diagnostic, battery and configuration entities
+   (such as Kasa LED, auto-update/auto-off, emergency-heat, one-touch-locking,
+   signal-strength and battery entities) are excluded from automatic import and
+   remain available for manual opt-in.
 5. Use each card's controls or **Try a voice command**. Both send real actions.
    **Read status** only reads state. Replies can play on an online Adam speaker.
 
@@ -79,6 +84,9 @@ Replace each example name with the device's Adam name, HA name or alias.
 
 - "Hey Adam, turn on Living Room."
 - "Is Bedroom Light on?" / "What's the status of Garage Door?"
+- "What's the temperature in the bedroom?" / "How warm is the nursery?"
+- "What's the humidity in the nursery?" / "Is Back Patio Door open?" / "Is Sink Leak wet?"
+- "Are any doors or windows open?" / "Are all doors locked?" / "Are any lights on?" / "Are there any water leaks?"
 - "Set Bedroom Light to 40 percent."
 - "Set color of Bedroom Light to blue."
 - "Set color temperature of Bedroom Light to 3000 kelvin."

@@ -15,9 +15,10 @@ from .clips import MAX_UPLOAD, ClipStorageFull, parse_wav, mono_16k, wav_bytes
 from .session import AudioSession, Trigger
 from .voices import VoiceService
 from .voice_api import add_voice_routes
-from .queries import QueryService, add_query_routes, weather_intent
+from .queries import QueryService, add_query_routes, time_date_intent, weather_intent
 from .home_assistant import HomeAssistantService, add_home_assistant_routes
 from .panel import PanelService
+from .timers import TimerService, add_timer_routes
 from .training_archive import InteractionArchive
 from .training_api import add_training_routes
 from .conversation import ConversationService, add_conversation_routes
@@ -54,6 +55,7 @@ class Fleet:
         self.voices = voices or VoiceService(state.directory/'voices')
         self.speech = speech or self.voices
         self.queries = QueryService(state, self.voices, self.speech, self.playback_pcm)
+        self.timers = TimerService(state, self.queries.deliver)
         self.home_assistant = HomeAssistantService(state, self.queries.deliver)
         self.conversation = ConversationService(state, self.queries.deliver)
         self.panel = PanelService(self.queries, enabled=panel_updates)
@@ -66,6 +68,7 @@ class Fleet:
         self.routes()
         add_voice_routes(self.router,self.voices)
         add_query_routes(self.router,self.queries)
+        add_timer_routes(self.router,self.timers)
         add_home_assistant_routes(self.router,self.home_assistant)
         add_training_routes(self.router,self.archive,self.jobs,self.state)
         add_conversation_routes(self.router,self.conversation)
@@ -76,9 +79,25 @@ class Fleet:
             entry['archive_warning'] = warning
         if job['status'] != 'done' or entry['trigger'] != 'wake':
             return
-        if weather_intent(job['text']):
+        if self.timers.submit(entry, job):
+            return
+        if time_date_intent(job['text']):
             self.queries.submit(entry, job)
-        elif not self.home_assistant.submit(entry, job):
+            return
+        w_intent = weather_intent(job['text'])
+        indoor_temp_candidate = (
+            w_intent is not None
+            and not w_intent.get('unsupported')
+            and bool(re.search(r'\btemperature\b', job['text'], re.I))
+            and not bool(re.search(r'\b(weather|forecast|rain|raining|snow|snowing|outside|outdoors)\b', job['text'], re.I))
+        )
+        if w_intent and not indoor_temp_candidate:
+            self.queries.submit(entry, job)
+        elif self.home_assistant.submit(entry, job):
+            return
+        elif w_intent:
+            self.queries.submit(entry, job)
+        else:
             self.conversation.submit(entry, job)
 
     def require_unit(self, request, unit_id):
@@ -164,6 +183,7 @@ class Fleet:
             archive_status = await asyncio.to_thread(self.archive.status)
             default_voice=await asyncio.to_thread(self.voices.registry.default)
             return dict(units=self.state.units(),pages=self.state.pages(),sessions=sessions,
+                        timers=self.timers.list_timers(),
                         url=self.url,protocol=1,wake_requirement='Hey Adam on device',default_voice=default_voice,
                         training_archive=archive_status)
 
@@ -221,13 +241,14 @@ class Fleet:
             return {'cancelled':True}
 
         @router.get('/api/units/{unit_id}/poll')
-        async def poll(request: Request,unit_id: str,firmware: str='',wake_model: str='unavailable',busy: bool=False):
+        async def poll(request: Request,unit_id: str,firmware: str='',wake_model: str='unavailable',busy: bool=False,dismissed: str=''):
             self.require_unit(request,unit_id)
             self.state.heartbeat(unit_id,firmware,wake_model)
             with self.state.db() as db:
                 unit_name = db.execute('SELECT name FROM units WHERE id=?', (unit_id,)).fetchone()['name']
             panel = self.panel.snapshot(unit_name, unit_id)
             panel['llm_provider'] = self.conversation.panel_provider()
+            panel['timers'] = self.timers.reconcile_poll(unit_id, dismissed)
             if busy:
                 return dict(type='idle', panel=panel)
             command = self.commands.pop(unit_id,None)

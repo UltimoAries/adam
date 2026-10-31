@@ -9,3 +9,7 @@ void space_render(int64_t now, space_state_t activity, bool controls);
 void space_preview(int minute, int64_t now);
 // Preview background weather only; -1 restores live weather. Expires in 60 seconds.
 void space_weather_preview(int code, int64_t now);
+// Diagnostic countdown timer preview; seconds < 0 clears preview timers.
+void space_timer_preview(int seconds, const char *label, int64_t now);
+bool space_timer_ringing(int64_t now);
+bool space_timer_touch(int x, int y, int64_t now);

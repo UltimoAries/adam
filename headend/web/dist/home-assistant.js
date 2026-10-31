@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 const json=(method,body)=>({method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 let settings,dirty=false,inventory=[],editing=null;
-const labels={on_off:'On / off',brightness:'Dimming',color_temperature:'Color temperature',color:'Color',temperature:'Temperature',temperature_range:'Temperature range',mode:'Mode',position:'Position',speed:'Fan speed',volume:'Volume',option:'Options',value:'Numeric setting'};
+const labels={read:'Sensor read',on_off:'On / off',brightness:'Dimming',color_temperature:'Color temperature',color:'Color',temperature:'Temperature',temperature_range:'Temperature range',mode:'Mode',position:'Position',speed:'Fan speed',volume:'Volume',option:'Options',value:'Numeric setting'};
 function node(tag,text='',cls=''){const n=document.createElement(tag);n.textContent=text;n.className=cls;return n;}
 function notice(text=''){$('notice').textContent=text;$('notice').hidden=!text;}
 async function api(path,options={}){const r=await fetch(path,options);if(!r.ok){if(r.status===401){$('signIn').hidden=false;$('haDashboard').hidden=true;$('accessToken').value='';$('deviceDialog').close();}let data;try{data=await r.json();}catch{}throw Error(typeof data?.detail==='string'?data.detail:`Request failed (${r.status}). Check your entries.`);}return r.json();}
@@ -13,7 +13,7 @@ function showInventory(data){inventory=data.devices;$('inventorySummary').textCo
 function deviceOptions(row,extra={}){return {name:row.custom_name,aliases:row.aliases,use_default_name:row.use_default_name,imported:row.imported,enabled:row.enabled,...extra};}
 async function importDevice(row){requireSaved();await api('/api/home-assistant/inventory/'+row.entity_id,json('PATCH',deviceOptions(row,{imported:true,enabled:true})));showInventory(await api('/api/home-assistant/inventory'));}
 function manage(row){editing=row;$('mapping').textContent='Home Assistant entity: '+row.entity_id;$('deviceName').value=row.custom_name;$('deviceName').placeholder=row.default_name;$('defaultName').textContent='Home Assistant name: '+row.default_name+'. Leave the Adam name blank to follow it automatically.';$('deviceAliases').value=row.aliases.join(', ');$('useDefaultName').checked=row.use_default_name;$('deviceEnabled').checked=row.enabled;$('deviceError').textContent='';$('removeDevice').hidden=!row.imported;$('deviceDialog').showModal();}
-function sample(row){const key=row.controls[0]?.key;if(row.capabilities.includes('brightness'))return `Set ${row.name} to 40 percent`;if(key==='on')return `Turn on ${row.name}`;if(['open','lock','activate','press'].includes(key))return `${key[0].toUpperCase()+key.slice(1)} ${row.name}`;return `What is the status of ${row.name}?`;}
+function sample(row){const key=row.controls[0]?.key,dc=row.attributes?.device_class;if(row.capabilities.includes('brightness'))return `Set ${row.name} to 40 percent`;if(key==='on')return `Turn on ${row.name}`;if(['open','lock','activate','press'].includes(key))return `${key[0].toUpperCase()+key.slice(1)} ${row.name}`;if(row.domain==='binary_sensor'&&['door','garage_door','window','opening'].includes(dc))return `Is ${row.name} open?`;if(row.domain==='sensor')return `What is the ${row.name}?`;return `What is the status of ${row.name}?`;}
 async function runControl(row,action,value,result,button){requireSaved();button.disabled=true;result.textContent='Sending…';try{const answer=await api(`/api/home-assistant/inventory/${row.entity_id}/actions`,json('POST',{action,value}));result.textContent=answer.text;if(answer.state){row.state=answer.state;result.closest('.device-card').querySelector('.badge').textContent=answer.state;}notice();}catch(error){result.textContent=error.message;}finally{button.disabled=false;}}
 function controlForm(row,c,result){
   const form=node('form','','device-control'),label=node('label',c.label),button=node('button','Set','secondary');button.type='submit';
@@ -32,7 +32,8 @@ function renderInventory(){
   if(!rows.length)$('inventory').append(node('div',inventory.length?'No matching devices. Choose Main controls or All entities to import devices.':'Refresh from Home Assistant after saving your connection.','panel help'));
   for(const row of rows){
     const card=node('article','','device-card');card.dataset.entity=row.entity_id;
-    const top=node('div','','device-top');top.append(node('h3',row.name),node('span',!row.present?'Missing':row.state,'badge'));card.append(top,node('p',row.entity_id,'mapping'));
+    const unitSuffix=row.attributes?.unit_of_measurement&&!['unavailable','unknown'].includes(row.state)?` ${row.attributes.unit_of_measurement}`:'';
+    const top=node('div','','device-top');top.append(node('h3',row.name),node('span',!row.present?'Missing':row.state+unitSuffix,'badge'));card.append(top,node('p',row.entity_id,'mapping'));
     const caps=node('div','','capabilities');for(const c of row.capabilities)caps.append(node('span',labels[c]||c.replaceAll('_',' ')));if(!row.controls.length)caps.append(node('span','Read-only status'));card.append(caps);
     if(row.conflicts.length)card.append(node('p','Shared name: '+row.conflicts.join(', ')+'. Use a unique name or alias before speaking commands.','device-conflict'));
     const manageButton=node('button',row.imported?'Manage name & aliases':'Import into Adam','secondary');manageButton.onclick=guard(async()=>row.imported?manage(row):await importDevice(row));card.append(manageButton);
