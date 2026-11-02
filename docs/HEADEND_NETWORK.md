@@ -4,8 +4,8 @@ In a typical household deployment, the head-end runs on a headless Raspberry Pi
 at `http://<headend-ip>:8765` (for example `http://192.168.1.50:8765`), talking
 to Home Assistant at `http://homeassistant.local:8123` (or `<ha-ip>:8123`) and an
 optional LAN GPU model host at `<gpu-host-ip>` (for example `192.168.1.20`).
-Conversation and speech recognition each have independent local Pi fallbacks,
-while Piper speech synthesis runs on the Pi. See
+Conversation and speech recognition have local Pi fallbacks and share one
+GPU preference and failure cooldown. Piper speech synthesis runs on the Pi. See
 [Raspberry Pi deployment](../deploy/pi5/README.md) and
 [conversation routing](CONVERSATION.md).
 
@@ -42,11 +42,12 @@ enforce the diagnostic clip limits.
   [INFORMATION_QUERIES.md](INFORMATION_QUERIES.md) for privacy, limits and extension points.
 - Registers and names speaker units, pairs a connected unit over USB, and stores
   its device identity and server URL in NVS while keeping saved Wi-Fi credentials intact.
-- Ends wake questions automatically after **1.2 seconds of quiet**, with a
+- Ends wake questions automatically after **750 ms of quiet** by default, with a
   13-second post-trigger cap and two seconds of pre-roll. Capture starts immediately
   at the trigger. **Settings → Voice → Talk 8S** and dashboard **Listen 8 sec**
   retain a fixed eight-second diagnostic window. The head-end keeps its local
-  speech models warm; see [RESPONSE_LATENCY.md](RESPONSE_LATENCY.md).
+  speech models warm; the minimum live capture is one second. See
+  [RESPONSE_LATENCY.md](RESPONSE_LATENCY.md) and [VOICE_LATENCY.md](VOICE_LATENCY.md).
 - Detects **Hey Adam** locally on the ESP32-S3 using the embedded
   `hey_adam-20261030-c60f0456` microWakeWord model (with stock `Hey Jarvis`
   preserved under `vendor/wake/` for reference/rollback). See
@@ -56,7 +57,7 @@ enforce the diagnostic clip limits.
   and the upload connects. Listening renders translucent green ripple mist over
   the live weather sky; speaker playback renders blue mist. A steady perimeter
   glow ring indicates whether the preferred GPU or Pi fallback LLM is ready
-  (Firmware v24–v27). Tapping the center of the screen cancels an active session.
+  (introduced in v24). Tapping the center of the screen cancels an active session.
   See [SPACE_PANEL.md](SPACE_PANEL.md). Because acoustic echo cancellation is not
   enabled, saved recordings retain the wake phrase and any chime bleed during pre-roll.
 - Streams audio to the head-end during capture and starts configured recognition
@@ -71,6 +72,14 @@ enforce the diagnostic clip limits.
 - Bounds pages to 15 seconds with a **five-minute** expiry before playback starts.
   A page is marked **Delivered** only when the target unit acknowledges completing
   playback.
+- Supports named countdown timers, local/world clock and calendar questions,
+  and up to four explicitly named Home Assistant actions in one utterance.
+- Provides **Cameras & gesture actions** (`/cameras`) through an optional Pi
+  worker: private RTSP settings, seven gestures, validated device actions, and
+  optional exact-frame event snapshots. See [CAMERAS.md](CAMERAS.md).
+  This is separate from speaker wake capture and pauses during voice processing.
+
+Announcements are queued messages; live two-way intercom and SIP are not implemented.
 
 ## Architecture
 
@@ -94,8 +103,9 @@ flowchart LR
 
 Each unit polls the head-end, providing a single routing point for announcements,
 weather answers, Home Assistant confirmations and conversational replies.
-Completed wake transcripts check the weather handler and Home Assistant command
-resolver first; unmatched general questions route to the conversation service.
+Completed wake transcripts check timers, time/date/calendar, explicit outdoor
+weather, and Home Assistant commands/sensors in that order, then ambiguous city
+temperature queries and conversational fallback.
 The LLM has no action tools or Home Assistant credentials. Manual Listen sessions
 and archive retranscriptions never dispatch commands or spoken answers.
 
@@ -115,16 +125,20 @@ Poll responses include optional `panel` metadata: Unix time, UTC offset,
 configured location, temperature unit, optional `device_name`, weather state
 (temperature, WMO condition code and observation time when ready), and
 `llm_provider` (`remote`, `local`, `unknown`, `unavailable`, or `disabled`).
-Firmware v24–v27 uses `llm_provider` to render the persistent LLM availability
+Current firmware uses `llm_provider` to render the persistent LLM availability
 ring without requiring a voice session. Background workers refresh weather and
 Ollama model readiness independently so device polls never block on external I/O.
 See [SPACE_PANEL.md](SPACE_PANEL.md) for freshness and offline rules.
+
+The panel also carries up to six active per-unit timers (`id`, `label`,
+`duration_s`, `end_unix`). Firmware maps deadlines to its monotonic clock so
+countdowns continue offline. Polls report dismissed timer IDs for reconciliation.
 
 Upload headers identify the session, trigger (`touch` or `wake`), installed wake
 model ID, and frame bound. Each binary packet contains a little-endian 32-bit
 sequence number followed by **640 bytes (20 ms of 16 kHz, signed 16-bit mono PCM)**.
 Wake sessions use HTTP chunked transfer with `X-Audio-Mode: silence-v1` and an
-explicit end record; see [variable-length upload](RESPONSE_LATENCY.md#variable-length-upload).
+explicit end record; see [variable-length upload](RESPONSE_LATENCY.md#variable-length-upload-silence-v1).
 `X-Audio-Preroll-Ms` reports the prepended history duration (0–2000 ms in 20 ms
 steps; absent means zero). The server rejects prefixes that consume the entire
 upload and retains the complete waveform in both the training archive and STT input.
@@ -162,7 +176,7 @@ upload WAV files.
 
 ## Replacing or rolling back the embedded wake model
 
-Firmware v27 ships with `hey_adam-20261030-c60f0456` embedded in
+Both current firmware targets ship with `hey_adam-20261030-c60f0456` embedded in
 `firmware/main/`. Stock `Hey Jarvis` remains vendored under `vendor/wake/` for
 reference and rollback. The [Hey Adam training guide](../training/hey_adam/README.md)
 and [GPU model generation walkthrough](WAKEWORD_MODEL_GENERATION.md) document the
@@ -171,7 +185,8 @@ isolated CPU/GPU benchmarks and microWakeWord training pipeline, while
 remaining controlled recall/false-accept evaluation.
 
 Wake inference runs natively on the ESP32-S3 via microWakeWord and TensorFlow
-Lite Micro over the shared ES7210 I2S stream; idle audio is never streamed to the
+Lite Micro over local microphone capture (ES7210 on the 1.85C BOX V2, a separate
+digital-microphone I2S bus on the 1.46); idle audio is never streamed to the
 server for wake detection. Pinned upstream sources and hashes are recorded in
 `vendor/wake/sources.json` and `firmware/dependencies.lock`.
 

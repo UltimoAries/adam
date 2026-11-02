@@ -6,7 +6,11 @@ pointing down**. On the enclosure side in this orientation:
 - **Upper physical button:** `BOOT` (`GPIO0`) — hold while resetting to force ROM download mode if needed.
 - **Lower physical button:** hardware `RESET`.
 
-Firmware v28 boots into the [illustrated sky home screen](SPACE_PANEL.md).
+Both current firmware targets use the same logical 360×360 UI; the 1.46 scales
+it to 412×412 with inverse touch mapping. The physical button/orientation notes
+above apply to the 1.85C BOX V2; see [BOARD_146.md](BOARD_146.md) for the new board.
+
+Current firmware boots into the [illustrated sky home screen](SPACE_PANEL.md).
 Controls start hidden so the clock, weather scene and any active countdown timer
 bars remain unobstructed. Tap anywhere once to reveal the curved volume,
 brightness and navigation controls; they hide automatically after eight seconds

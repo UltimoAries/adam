@@ -1,7 +1,7 @@
 # Hardware bring-up and early development history (v1–v13)
 
 > [!NOTE]
-> This document records the initial October 2026 hardware bring-up milestones (**Firmware v1–v13**), from probing the ST77916 QSPI round LCD and CST816 touch controller through early eye/ear visuals and stock `Hey Jarvis` testing. For current **Firmware v27** behavior — including the illustrated sky/weather home screen, **Hey Adam** (`hey_adam-20261030-c60f0456`), Home Assistant integration, and Raspberry Pi / GPU LLM routing — see [`README.md`](../README.md), [`HEADEND_NETWORK.md`](HEADEND_NETWORK.md), [`SPACE_PANEL.md`](SPACE_PANEL.md), and [`TOUCH_UI.md`](TOUCH_UI.md).
+> This document records the initial October 2026 hardware bring-up milestones (**Firmware v1–v13**), from probing the ST77916 QSPI round LCD and CST816 touch controller through early eye/ear visuals and stock `Hey Jarvis` testing. For current firmware behavior — including the illustrated sky/weather home screen, **Hey Adam** (`hey_adam-20261030-c60f0456`), Home Assistant integration, and Raspberry Pi / GPU LLM routing — see [`README.md`](../README.md), [`HEADEND_NETWORK.md`](HEADEND_NETWORK.md), [`SPACE_PANEL.md`](SPACE_PANEL.md), and [`TOUCH_UI.md`](TOUCH_UI.md).
 
 Target hardware: Waveshare **ESP32-S3-Touch-LCD-1.85C-BOX V2** (silkscreen `V2`
 and `E-S-T-L 1.85C-Box`), featuring an ESP32-S3 with 16 MiB QSPI flash, 8 MiB

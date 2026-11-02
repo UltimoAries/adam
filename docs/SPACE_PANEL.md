@@ -1,6 +1,6 @@
 # Sky home screen
 
-Firmware v28 renders an illustrated local-time sky, weather and countdown-timer
+Current firmware renders an illustrated local-time sky, weather and countdown-timer
 home screen in six centered rows: **device name, weekday, month/date, time, and
 either stacked countdown timer bars (when 1+ timers are active on that unit) or
 weather condition + temperature**. Standard labels use a 21 px glyph height, time
@@ -41,7 +41,7 @@ The background follows the unit's configured local time continuously:
 
 ## Persistent LLM availability ring
 
-Firmware v24–v27 draws a steady perimeter **LLM edge ring** around the round
+Current firmware draws a steady perimeter **LLM edge ring** around the round
 360×360 display, including while idle:
 
 - **Green:** The preferred LAN GPU conversation model is loaded and eligible to
@@ -124,7 +124,7 @@ python tools/check_weather_panel.py
 .\headend\.venv\Scripts\python.exe -m unittest headend.test_panel -v
 ```
 
-## Firmware evolution summary (v14–v28)
+## Firmware evolution summary (v14–v30)
 
 | Firmware | Milestone summary |
 | --- | --- |
@@ -135,3 +135,5 @@ python tools/check_weather_panel.py
 | **v22–v23** | Layered translucent green/blue ripple mist over the live weather sky (~10–12 fps during active mist blending) and lowered the 120 ms listening chime by 20 dB (`peak: 1000`) to eliminate microphone pre-roll clipping. |
 | **v24–v27** | Added head-end `llm_provider` polling metadata and the persistent green/yellow LLM edge ring (v24), widened the core to 8 px with a 14 px inward glow (v25), switched rain/drizzle to high-contrast saturated blue drops (v26), and softened the inner/outer ring halo opacity by 25% (v27). |
 | **v28** | Added per-unit monotonic countdown timer bars in the lower Home band, 2-tap `[X]` → `[OK?]` cancel confirmation while running, 1-tap-anywhere silence + rhythmic 2.5 s chime bursts when ringing, `/poll?dismissed=...` sync, and `timer preview` / `timer clear` USB commands. |
+| **v29** | Reduced the default silence endpoint to 750 ms and minimum live capture to one second; opened upload during the cue and requested asynchronous recording persistence. |
+| **v30-185 / v30-146** | Split board-specific targets, adding the non-suffixed 1.46's SPD2010 display/touch, separate microphone bus, and speaker gain. Both retain the logical 360×360 UI; the 1.46 scales it to 412×412. |

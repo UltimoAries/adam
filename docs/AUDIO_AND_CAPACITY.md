@@ -1,7 +1,7 @@
 # Audio output and capacity (historical bring-up baselines)
 
 > [!NOTE]
-> This document records early hardware bring-up and FreeRTOS resource baselines measured on **Firmware v4–v12** (October 2026), when the unit rendered an animated eye/ear and ran the stock `Hey Jarvis` wake word. For current **Firmware v27** behavior — including the illustrated weather sky and LLM availability ring, **Hey Adam** (`hey_adam-20261030-c60f0456`), quieter 20 dB chime, Home Assistant control, and Raspberry Pi / GPU head-end architecture — see [`README.md`](../README.md), [`HEADEND_NETWORK.md`](HEADEND_NETWORK.md), [`SPACE_PANEL.md`](SPACE_PANEL.md), and [`TOUCH_UI.md`](TOUCH_UI.md).
+> This document records early hardware bring-up and FreeRTOS resource baselines measured on **Firmware v4–v12** (October 2026), when the unit rendered an animated eye/ear and ran the stock `Hey Jarvis` wake word. For current firmware behavior — including the illustrated weather sky and LLM availability ring, **Hey Adam** (`hey_adam-20261030-c60f0456`), quieter 20 dB chime, Home Assistant control, and Raspberry Pi / GPU head-end architecture — see [`README.md`](../README.md), [`HEADEND_NETWORK.md`](HEADEND_NETWORK.md), [`SPACE_PANEL.md`](SPACE_PANEL.md), and [`TOUCH_UI.md`](TOUCH_UI.md).
 
 Measured on the Waveshare **ESP32-S3-Touch-LCD-1.85C-BOX V2** using ESP-IDF 5.5.1.
 The sections below preserve the progression from the v4 speaker baseline through

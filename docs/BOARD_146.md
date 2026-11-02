@@ -13,7 +13,7 @@ digital I2S microphone. Reference:
 [Waveshare hardware documentation](https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.46).
 
 The target reuses the existing Hey Adam wake word, pre-roll, silence endpoint,
-Wi-Fi setup, pairing, paging/intercom, weather home screen, GPU/Pi status ring,
+Wi-Fi setup, pairing, message paging, weather home screen, GPU/Pi status ring,
 countdown timers, and head-end voice routing. Home Assistant, STT, conversation,
 and TTS continue to run on the head-end and optional GPU host.
 

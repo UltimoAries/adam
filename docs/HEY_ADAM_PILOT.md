@@ -2,7 +2,7 @@
 
 ## Current embedded model: `hey_adam-20261030-c60f0456`
 
-Firmware v27 embeds the `hey_adam-20261030-c60f0456` microWakeWord v2 model
+Both current firmware targets embed the `hey_adam-20261030-c60f0456` microWakeWord v2 model
 (first integrated in Firmware v18), stored in `firmware/main/wake_model.tflite`
 with its matching `firmware/main/wake_model.json` manifest and generated
 `firmware/main/wake_model_config.h`. Stock **Hey Jarvis** remains preserved under

@@ -1,12 +1,12 @@
 # ADAM
 
-**Automation Display and Mapping** is a local-first voice assistant, intercom,
+**Automation Display and Mapping** is a local-first voice assistant, paging,
 and smart-home control system built around a round-touchscreen ESP32-S3
 speaker/microphone unit and a Python head-end.
 
 ## Features
 
-- **Illustrated round-display home screen & countdown timers (Firmware v28):**
+- **Illustrated round-display home screen & countdown timers:**
   Live local clock and cached weather over an animated day/night sky with rain,
   drizzle, and snow particles, green listening mist, blue playback mist, stacked
   on-screen countdown timer bars (2-tap `[X]` → `[OK?]` cancel while running,
@@ -14,11 +14,14 @@ speaker/microphone unit and a Python head-end.
   idle edge ring showing GPU vs. local LLM readiness.
 - **On-device wake word & low-latency capture:** Embedded experimental
   **Hey Adam** microWakeWord model, quieter 20 dB trigger chime, rolling
-  two-second pre-roll buffer, and silence-ended Wi-Fi audio streaming.
+  two-second pre-roll buffer, and silence-ended Wi-Fi audio streaming with a
+  configurable 750 ms quiet timeout and one-second minimum live capture.
 - **Local speech pipeline with optional GPU offload:** Local CPU INT8
   `faster-whisper` transcription and persistent Piper ONNX speech synthesis, plus
   optional LAN offload to a GPU host (Speaches Whisper `large-v3-turbo` and
-  Ollama `qwen3.5:9b`) with automatic per-request local fallback.
+  Ollama `qwen3.5:9b`). One GPU/Pi preference and installed-model dropdowns on
+  `/models` configure both routes, with a shared failure cooldown and automatic
+  local fallback. Piper speaking voice stays on the Pi.
 - **Named countdown timers (`/` & voice):** Set, extend, check, and cancel up to
   8 named countdown timers per speaker unit by voice or from the dashboard, with
   local monotonic countdowns that survive brief Wi-Fi drops, originating-speaker
@@ -28,7 +31,8 @@ speaker/microphone unit and a Python head-end.
   doors/windows, locks, motion, leak sensors), assign persistent spoken names and
   aliases, ask indoor room sensor and bedtime summary questions (*"What's the
   temperature in the bedroom?"*, *"Are any doors or windows open?"*), and run
-  spoken commands with confirmations.
+  spoken commands with confirmations, including up to four explicitly named
+  actions in one utterance.
 - **Time, world clock, calendar & weather answers (`/queries`):** Spoken local
   time and date per speaker timezone, world clock lookups (*"What time is it in
   Tokyo?"*), calendar date math (*"How many days until Christmas?"*), and
@@ -39,17 +43,27 @@ speaker/microphone unit and a Python head-end.
 - **Durable training archive (`/training`):** Optional bounded archive of
   original device recordings, transcripts, wake-phrase boundary markers, and
   human review labels for future wake-word/speech tuning.
+- **Cameras & gesture actions (`/cameras`):** Save private RTSP connections,
+  preview one active stream, and map seven sustained hand gestures to imported
+  Home Assistant devices and supported actions. Optional event snapshots retain
+  the triggering image and debugging metadata for up to seven days within the
+  latest 200 events. The Pi camera worker pauses during voice processing.
 
 > **Status notes:** The embedded `Hey Adam` wake model (`hey_adam-20261030-c60f0456`)
 > loads and handles live commands reliably; formal held-out false-accept /
 > false-reject benchmarking remains in progress (see [docs/HEY_ADAM_PILOT.md](docs/HEY_ADAM_PILOT.md)).
 > Custom 3D house-model import and map device placement are planned future work.
+> Paging is message-based; live two-way calling and SIP are not implemented.
 > All speech inference runs on your LAN; Open-Meteo weather lookups and one-time
 > dependency/model downloads require internet access.
 
 ---
 
 ## Hardware Target & Setup Notes
+
+Current source firmware targets are **`v30-185`** and **`v30-146`**. Check the
+dashboard or `status` over USB for the version actually installed on each unit;
+updating the head-end does not flash speakers.
 
 - **Target unit:** **Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2** (`ESP32-S3`,
   16 MB flash, 8 MB octal PSRAM, ST77916 360×360 QSPI round LCD, CST816 touch,
@@ -63,6 +77,11 @@ speaker/microphone unit and a Python head-end.
     `USB-Serial/JTAG` controller (`COMx` on Windows, `/dev/ttyACM0` on Linux) for
     flashing, pairing, and diagnostics. If first-time flashing requires download
     mode, hold the upper `BOOT` button, tap the lower `RESET` button, then release `BOOT`.
+- **Additional target:** The non-suffixed **Waveshare ESP32-S3-Touch-LCD-1.46**
+  has a 412×412 SPD2010 screen/touch controller, PCM5101 output, and one digital
+  microphone. It retains the same logical 360×360 UI and voice features, with
+  separate firmware and board-specific audio gain. See [board support and
+  limitations](docs/BOARD_146.md); do not cross-flash the two targets.
 - **Network requirements:**
   - The ESP32-S3 supports **2.4 GHz WPA2/WPA3-Personal Wi-Fi** (printable ASCII
     SSID and password).
@@ -138,12 +157,19 @@ back to standard Windows installations (`%USERPROFILE%\.espressif` or
 `C:\Espressif\esp-idf`):
 
 ```powershell
+# Original 1.85C BOX V2 (v30-185):
 .\tools\idf.ps1 -DIDF_TARGET=esp32s3 build
 # Replace COM6 with your unit's serial port:
 .\tools\idf.ps1 -p COM6 flash
+
+# Non-suffixed 1.46 only (v30-146), using its own USB port:
+.\tools\idf146.ps1 build
+.\tools\idf146.ps1 -p <new-board-port> flash
 ```
 
 ### Linux / macOS
+
+For the original 1.85C BOX V2:
 
 ```sh
 . "$IDF_PATH/export.sh"
@@ -162,7 +188,7 @@ interface.
 | Path | Purpose |
 | --- | --- |
 | `headend/` | FastAPI server, audio session pipeline, speech/LLM routing, web UI, and unit tests |
-| `firmware/` | ESP-IDF v5.5.1 C/C++ firmware for the Waveshare 1.85C-BOX V2 |
+| `firmware/` | ESP-IDF v5.5.1 C/C++ firmware for the Waveshare 1.85C-BOX V2 and non-suffixed 1.46 |
 | `deploy/pi5/` | Headless Raspberry Pi 5 / ARM64 Docker Compose stack & setup guide |
 | `deploy/model-host/` | Optional Windows GPU Ollama + Speaches setup & desktop controller |
 | `tools/` | Model provisioning, migration, firmware helpers, and hardware diagnostics ([tools/README.md](tools/README.md)) |
@@ -187,14 +213,15 @@ interface.
 - [Head-end architecture & device HTTP protocol](docs/HEADEND_NETWORK.md)
 - [Conversation routing & LLM fallback](docs/CONVERSATION.md)
 - [Home Assistant inventory & spoken controls](docs/HOME_ASSISTANT.md)
+- [RTSP cameras, gesture actions & event snapshots](docs/CAMERAS.md)
 - [Information queries & Open-Meteo weather](docs/INFORMATION_QUERIES.md)
 - [Piper voice package format & library](docs/VOICE_PACKAGES.md)
 - [Response latency, pre-roll & silence endpointing](docs/RESPONSE_LATENCY.md)
+- [Current Pi voice latency tuning, GPU fallback & timing measurements](docs/VOICE_LATENCY.md)
 - [Training archive & human review workflow](docs/TRAINING_ARCHIVE.md)
 
 ### Firmware, Hardware & Wake Word
 - [Waveshare 1.46-inch board target, build, and feature differences](docs/BOARD_146.md)
-- [RTSP cameras, gesture rules, and Home Assistant actions](docs/CAMERAS.md)
 - [Illustrated sky home screen & status ring](docs/SPACE_PANEL.md)
 - [Touch UI & Wi-Fi configuration](docs/TOUCH_UI.md)
 - [USB serial display, audio & diagnostic controls](docs/DISPLAY_CONTROLS.md)

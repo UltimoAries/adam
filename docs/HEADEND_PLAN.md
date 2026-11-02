@@ -1,7 +1,7 @@
 # Local voice device and head-end design plan (historical)
 
 > [!NOTE]
-> This document preserves the initial October 2026 architecture and staged bring-up plan written around **Firmware v4–v12** (when STT ran on a single development machine and the unit rendered an animated eye with stock `Hey Jarvis`). Almost all planned stages have since been implemented and superseded by **Firmware v27** and the Raspberry Pi + optional GPU host architecture. For current behavior and setup, see [`README.md`](../README.md), [`HEADEND_NETWORK.md`](HEADEND_NETWORK.md), [`CONVERSATION.md`](CONVERSATION.md), [`SPACE_PANEL.md`](SPACE_PANEL.md), and [`TOUCH_UI.md`](TOUCH_UI.md).
+> This document preserves the initial October 2026 architecture and staged bring-up plan written around **Firmware v4–v12** (when STT ran on a single development machine and the unit rendered an animated eye with stock `Hey Jarvis`). Almost all planned stages have since been implemented and superseded by the current firmware targets and the Raspberry Pi + optional GPU host architecture. For current behavior and setup, see [`README.md`](../README.md), [`HEADEND_NETWORK.md`](HEADEND_NETWORK.md), [`CONVERSATION.md`](CONVERSATION.md), [`SPACE_PANEL.md`](SPACE_PANEL.md), and [`TOUCH_UI.md`](TOUCH_UI.md).
 
 ## Original design goals
 

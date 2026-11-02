@@ -1,6 +1,7 @@
 # Voice latency tuning on the Pi
 
-Firmware v29 ends a wake capture after 750 ms of quiet, rounded up to a complete
+Current firmware (`v30-185` and `v30-146`) retains the v29 latency changes:
+a wake capture ends after 750 ms of quiet, rounded up to a complete
 20 ms wire packet. The previous setting was 1200 ms. The minimum live capture
 is now 1000 ms instead of 2000 ms; speech must still be detected after the cue
 exclusion window. No-activity and maximum-duration limits are unchanged.

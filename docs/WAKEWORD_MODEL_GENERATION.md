@@ -6,7 +6,7 @@ an RTX-series card) using WSL2 and Docker. Training runs locally; internet acces
 is used only to pull container packages, sample-generator checkpoints and
 public training datasets.
 
-**Current status:** Firmware v27 already embeds the pre-built
+**Current status:** Both current firmware targets already embed the pre-built
 `hey_adam-20261030-c60f0456` model in `firmware/main/` (with stock `Hey Jarvis`
 preserved under `vendor/wake/` for rollback; see [HEY_ADAM_PILOT.md](HEY_ADAM_PILOT.md)).
 Follow this guide when training a new or fine-tuned replacement model.
@@ -229,7 +229,7 @@ Confirm `ready=1` and `model=hey_adam-v1`.
 - Test at least 20 held-out spoken “Hey Adam” attempts around 1 m (and additional
   trials at 2–3 m and varied angles), targeting >=90% recall before tuning.
 - Speak continuous wake queries (“Hey Adam, what's the weather in Seattle?”) and
-  verify pre-roll retention, the 1.2 s silence endpoint, reply playback and
+  verify pre-roll retention, the configured silence endpoint (750 ms by default), reply playback and
   sky-panel mist transitions.
 - Log multi-hour background speech/TV/music exposure to measure false accepts per
   hour, and check `wake status` and `resources` for zero overflows and healthy

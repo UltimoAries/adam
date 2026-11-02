@@ -8,7 +8,7 @@ capture continues, followed by a 120 ms settling interval before Wi-Fi upload
 starts; speech spoken immediately after the wake phrase is retained without pause.
 Wake inference pauses during the cue and active capture session.
 
-On Firmware v22–v27, listening renders translucent **green ripple mist** over the
+On Firmware v22 and later, listening renders translucent **green ripple mist** over the
 live [illustrated weather sky](SPACE_PANEL.md) (replacing the retired early
 animated eye/ear), and tapping the center of the screen cancels capture. Because
 acoustic echo cancellation is not implemented, the preserved original recording

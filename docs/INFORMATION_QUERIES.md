@@ -2,7 +2,7 @@
 
 ADAM answers wake-triggered time, world-clock, calendar, countdown-timer and
 weather questions locally using Piper speech synthesis and Open-Meteo forecasts.
-With Firmware v28 (using silence-ended wake capture and warm speech workers
+With current firmware (using silence-ended wake capture and warm speech workers
 introduced in firmware v13 / head-end v0.6), say:
 
 **“Hey Adam, what's the weather in Seattle, Washington?”**

@@ -1,6 +1,6 @@
 # Display and USB serial controls
 
-Firmware v28 boots into the [illustrated sky home screen](SPACE_PANEL.md) with
+Current firmware boots into the [illustrated sky home screen](SPACE_PANEL.md) with
 six centered rows, white black-outlined lettering, live weather animations,
 stacked countdown timer bars when active, green/blue activity mist and the
 perimeter LLM availability ring. Tap once to reveal volume, brightness and

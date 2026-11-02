@@ -7,10 +7,16 @@ archive.
 
 - **Dashboard & fleet management (`/`)**: Pair units over USB, monitor online
   status, review incoming audio sessions, and send typed or recorded pages.
-- **Model services (`/models`)**: Prefer optional LAN GPU servers for speech
-  recognition (Speaches / faster-whisper) and general conversation (Ollama),
-  with automatic local CPU fallbacks (`base.en` faster-whisper, local Piper, and
-  optional local Ollama). See [CONVERSATION.md](../docs/CONVERSATION.md).
+- **Model services (`/models`)**: One GPU/Pi preference and installed-model
+  dropdowns select speech recognition (Speaches / faster-whisper) and general
+  conversation (Ollama) on one GPU computer. Both routes share a failure cooldown
+  and fall back to local `base.en` and configured local Ollama. Piper TTS stays
+  local. See [CONVERSATION.md](../docs/CONVERSATION.md).
+- **Timers (`/` and voice)**: Create, extend, check, and cancel named countdowns
+  with per-speaker display/ringing and fleet-wide lookup by name.
+- **Cameras (`/cameras`)**: Private RTSP settings, seven gesture choices, bounded
+  Home Assistant action rules, and optional event snapshots/debugging metadata.
+  Inference runs in an optional Pi sidecar. See [CAMERAS.md](../docs/CAMERAS.md).
 - **Home Assistant (`/home-assistant`)**: Persistent local names and aliases,
   optional automatic entity import, capability-based controls, and spoken
   commands. See [HOME_ASSISTANT.md](../docs/HOME_ASSISTANT.md).
@@ -51,6 +57,14 @@ Docker deployment.
   and non-blocking home-screen metadata snapshots.
 - `conversation.py`: Short spoken answers via preferred LAN Ollama with bounded
   loopback Ollama fallback and asynchronous loaded-model status probing.
+- `processing.py`, `model_catalog.py`: Combined GPU/Pi settings, shared failure
+  cooldown, and discovery of installed speech/conversation models.
+- `timers.py`: Persistent countdowns, voice duration parsing, and speaker poll
+  reconciliation.
+- `cameras.py`, `camera_worker.py`: Camera registry, sustained gesture gating,
+  bounded action dispatch, private event images, and separate RTSP inference worker.
+- `recording_work.py`, `latency.py`: Bounded asynchronous recording persistence
+  and live voice-pipeline timing measurements; see [VOICE_LATENCY.md](../docs/VOICE_LATENCY.md).
 - `training_archive.py`, `training_api.py`: Bounded recording archive with
   SHA-256 verification, free-space/size caps, and review endpoints.
 - `__main__.py`: CLI tool to inspect a local 16 kHz mono WAV or run offline

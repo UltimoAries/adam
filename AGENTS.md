@@ -6,9 +6,9 @@ This document gives AI coding agents and developers an end-to-end architectural 
 
 ## 1. System Topology
 
-ADAM is a local-first voice assistant, intercom, and smart-home controller built from three cooperating tiers on a private LAN:
+ADAM is a local-first voice assistant, paging system, and smart-home controller built from three cooperating tiers on a private LAN. Live two-way calling and SIP are not implemented.
 
-1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, firmware targets `v30-185` and `v30-146`):**
+1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, firmware targets `v30-185` and `v30-146`; installed units may run older builds):**
    - **Target hardware:** **Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2** (`16 MB` flash, `8 MB` octal PSRAM, `360×360` round ST77916 QSPI LCD, CST816 capacitive touch, ES7210 dual-mic ADC, ES8311 DAC/amp).
    - **Physical orientation:** Operate with the **USB-C port pointing down**. On the rear/side enclosure buttons, the **upper button is `BOOT` (`GPIO0`)** and the **lower button is hardware `RESET`**.
    - **On-device responsibilities:** Continuous 16 kHz stereo capture over a shared full-duplex I2S bus, local on-device **Hey Adam** wake-word detection (`hey_adam-20261030-c60f0456` via `micro_wake_word` + TFLite Micro), 2-second rolling pre-roll ring buffer, quiet 120 ms trigger cue, chunked silence-ended HTTP audio upload, mono PCM page playback, local monotonic countdown timer bars, touch UI, and the animated sky/weather/LLM-ring home screen.
@@ -31,10 +31,11 @@ ADAM is a local-first voice assistant, intercom, and smart-home controller built
 
 ### A. Capture & Upload (`firmware/main/headend.c`, `preroll.c`, `wake.cpp`)
 1. `mic.c` feeds 10 ms stereo frames into `wake.cpp` and `headend_feed()` (which caches mono history while the speaker is silent).
-2. On wake detection, `voice_buffer_begin_auto()` freezes up to `2000 ms` of pre-roll history, plays the quiet `listen_cue.pcm` chime, and opens `POST /api/units/{unit_id}/audio` with headers:
+2. On wake detection, `voice_buffer_begin_auto()` freezes up to `2000 ms` of pre-roll history, plays the quiet `listen_cue.pcm` chime, and opens `POST /api/units/{unit_id}/audio` concurrently. Default endpointing uses `750 ms` of quiet and a `1000 ms` minimum live capture. Headers include:
    - `Authorization: Bearer <device-token>`
    - `X-Session-ID: <32-hex>`
    - `X-Trigger: wake` (or `touch` for manual `Talk 8S` / remote `Listen`)
+   - `X-Recording-Async: 1` (STT/action dispatch can proceed while the bounded recording worker persists audio)
    - `X-Audio-Mode: silence-v1` (chunked `644`-byte records: 4-byte little-endian sequence + `640` bytes of 20 ms 16 kHz mono PCM, terminated by sequence `0xffffffff` + actual count + endpoint reason).
 
 ### B. Utterance Dispatch Order (`headend/fleet.py` → `Fleet.transcription_done`)
@@ -60,7 +61,7 @@ Wake transcripts route through five deterministic stages before touching the LLM
 
 ### C. Reply Delivery & Home Panel Polling (`GET /api/units/{unit_id}/poll`)
 - Spoken replies synthesize 16 kHz mono PCM via `VoiceService`, normalize peak amplitude in `Fleet.playback_pcm()` (**strictly `0.1s`–`15.0s`**, `3,200`–`480,000` bytes), and enqueue a targeted page (5-minute expiry).
-- Each idle speaker polls `/api/units/{unit_id}/poll?firmware=v29&wake_model=...&busy=0|1[&dismissed=id1,id2]` every `1.5s` (`250 ms` for 30s after a wake capture):
+- Each idle speaker polls `/api/units/{unit_id}/poll?firmware=<board-firmware-id>&wake_model=...&busy=0|1[&dismissed=id1,id2]` every `1.5s` (`250 ms` for 30s after a wake capture):
   - Receives `panel` metadata: `unix_time`, `utc_offset`, `device_name`, `weather_state`/`temperature`/`weather_code`, `llm_provider` (`remote` → green perimeter ring, `local` → soft yellow ring), and up to 6 active per-unit `timers` (`id`, `label`, `duration_s`, `end_unix`).
   - `headend.c` converts `end_unix` into monotonic `esp_timer_get_time()` `deadline_us` so active timers keep counting down accurately offline.
   - When a page is offered (`{"type": "page", "id": ..., "bytes": ...}`), the unit fetches `/pages/{id}/audio`, acks `playing`, plays through `audio.c` (with 250 ms post-unmute silence priming so first syllables never clip), and acks `delivered`.
@@ -82,11 +83,11 @@ Wake transcripts route through five deterministic stages before touching the LLM
 | `headend/conversation.py` | GPU/Pi Ollama streaming chat client, `<think>` stripping, background 5s model-readiness probe for the LCD ring |
 | `headend/model_services.py` | Remote Speaches STT offload with automatic local `faster-whisper` fallback |
 | `headend/processing.py`, `model_catalog.py` | Combined GPU/Pi settings, shared cooldown, and read-only installed model discovery |
-| `headend/cameras.py`, `camera_worker.py` | Private RTSP registry, optional CPU-limited MediaPipe sidecar, sustained gesture gates, and bounded Home Assistant action rules; see `docs/CAMERAS.md` |
+| `headend/cameras.py`, `camera_worker.py` | Private RTSP registry, optional CPU-limited MediaPipe sidecar, sustained gesture gates, bounded Home Assistant action rules, and optional event snapshots (7 days / latest 200 events); see `docs/CAMERAS.md` |
 | `headend/recording_work.py`, `latency.py` | Bounded asynchronous recording persistence and per-session latency measurements |
-| `headend/voices.py` | Verified Piper `.tar.gz` voice package registry and persistent warm ONNX synthesis workers |
+| `headend/voices.py` | Verified Piper `.zip` voice package registry and persistent warm ONNX synthesis workers |
 | `headend/training_archive.py` | Bounded WAV/transcript/wake-boundary archive and human review store |
-| `headend/web/dist/` | Vanilla HTML/CSS/JS pages (`/`, `/queries`, `/home-assistant`, `/models`, `/voices`, `/training`, `/bench`, `/map`) |
+| `headend/web/dist/` | Vanilla HTML/CSS/JS pages (`/`, `/queries`, `/home-assistant`, `/models`, `/voices`, `/cameras`, `/training`, `/bench`, `/map`) |
 | `firmware/main/main.c` | ST77916 QSPI LCD + TCA9554 bring-up, USB Serial/JTAG command parser, main render/tick loop |
 | `firmware/main/space.c` | Illustrated day/night sky, WMO weather particles, green/blue ripple mist, LLM glow ring, countdown timer bars |
 | `firmware/main/ui.c` | Touch hit-testing, hidden-until-tapped volume/brightness rails, Settings / Wi-Fi / Voice / Audio menus |
@@ -166,6 +167,11 @@ cd ~/adam/deploy/pi5
 sudo docker compose -f compose.yaml -f compose.llm.yaml up -d --build
 sudo docker compose ps
 ```
+
+For installations with camera recognition enabled, include `-f compose.camera.yaml`
+alongside the base and LLM Compose files on updates. See `docs/CAMERAS.md` for
+worker setup and resource limits. The camera configuration, RTSP credentials,
+event metadata, and snapshots live in the private `headend/data` volume.
 
 Verify readiness via `GET http://<ADAM_LAN_IP>:8765/api/health` (`"status": "ok"`, `"model_state": "ready"`). Note the Docker container runs unprivileged (`1000:1000`) with `read_only: true`, `HF_HUB_OFFLINE=1`, `headend/data` mounted read-write, and `headend/models` mounted read-only.
 

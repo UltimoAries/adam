@@ -78,6 +78,10 @@ or every custom integration action. Unsupported entries remain visible as
 read-only. Thermostat values use HA's configured temperature unit. In heat/cool
 mode use the low/high range rather than a single temperature.
 
+The separate [Cameras page](CAMERAS.md) accepts RTSP connections directly; it
+does not import HA camera streams. Gesture rules use this same bounded device
+capability/action mapping and can save an optional triggering snapshot for debugging.
+
 ## Spoken examples
 
 Replace each example name with the device's Adam name, HA name or alias.

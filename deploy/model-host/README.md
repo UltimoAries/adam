@@ -131,16 +131,26 @@ it can manage the `SYSTEM` tasks):
 
 Open `http://<headend-ip>:8765/models` on your ADAM head-end:
 
-- **Speech recognition:**
-  - Mode: `Prefer remote, fall back locally`
-  - Service base URL: `http://<gpu-host-lan-ip>:8000/v1` *(note the `/v1` suffix here)*
-  - Model ID: `deepdml/faster-whisper-large-v3-turbo-ct2`
-  - API key: the `API_KEY` from `C:\ADAM_VOICE\config\speaches.env`
-- **Conversation:**
-  - Enable **Answer general questions**
-  - Preferred computer Ollama address: `http://<gpu-host-lan-ip>:11434`
-  - Model: `adam:latest` *(follows whichever model you select in **ADAM GPU Control**)*
-  - Local fallback Ollama address: `http://127.0.0.1:11434`, model `qwen3.5:0.8b`
+1. Set **Where to run** to **Prefer GPU, automatically fall back to Pi**.
+2. Set **GPU computer address** to `http://<gpu-host-lan-ip>` without a port
+   or `/v1` path. Both services use this computer.
+3. In **Advanced settings**, use speech port `8000`, conversation port `11434`,
+   and the speech `API_KEY` from `C:\ADAM_VOICE\config\speaches.env`. Enable
+   **Answer general questions**. Model discovery can use the entered key before
+   saving; leave it blank to reuse the saved key for the same speech address.
+4. Click **Refresh available models**. Select
+   `deepdml/faster-whisper-large-v3-turbo-ct2` for speech recognition and
+   **Follow GPU Control selection (adam:latest)** for conversation, or choose
+   another installed Ollama model to pin the selection.
+5. Click **Save processing settings**, then use **Try a conversation** to check
+   the saved route without speaking or controlling devices.
+
+The head-end constructs the Speaches `/v1` URL. Discovery lists installed models;
+it does not download them. Saved selections remain available while the GPU host
+is offline. The Pi uses local `base.en` and its configured Ollama fallback
+(`http://127.0.0.1:11434`, `qwen3.5:0.8b` in this deployment). Piper speaking
+voice stays on the Pi. Both model routes share the GPU failure cooldown; see
+[routing and fallback](../../docs/CONVERSATION.md).
 
 ---
 
@@ -149,7 +159,7 @@ Open `http://<headend-ip>:8765/models` on your ADAM head-end:
 - **Start / Stop:** Clicking **Stop** disables that scheduled task and stops the
   process/container so it stays off across reboots until **Start** is clicked
   again. Model weights are never deleted.
-- **Speaker home-screen ring:** Firmware v27 displays a persistent glowing edge
+- **Speaker home-screen ring:** Current firmware displays a persistent glowing edge
   ring on the speaker's idle sky screen—**green** when the preferred GPU
   conversation model is loaded in VRAM, **yellow** when using the head-end's
   local fallback, and hidden when conversation is disabled or unavailable.

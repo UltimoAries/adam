@@ -9,12 +9,12 @@ Typical configurations pair `qwen3.5:9b` on an NVIDIA RTX-class GPU host with
 Use the **ADAM GPU Control** desktop shortcut on the Windows GPU host to select
 the underlying installed model, start/stop each service, or view CPU/GPU load and
 VRAM use; its saved selection survives service and system restarts.
-See [desktop controls](../deploy/model-host/README.md#desktop-control-window).
+See [desktop controls](../deploy/model-host/README.md#desktop-control-window-behavior).
 
-Firmware v25–v27 displays a persistent glowing home-screen edge ring showing the
+Current firmware displays a persistent glowing home-screen edge ring showing the
 effective conversation route even while idle: green when the configured GPU model
 is loaded and eligible, or soft yellow when the Pi fallback is ready instead
-(v27 softens the inner/outer halo opacity by 25%). A separate five-second
+(v27 softened the inner/outer halo opacity by 25%). A separate five-second
 background metadata check keeps device polls fast and makes no inference requests.
 The ring honors failure cooldowns and hides when conversation is disabled,
 unavailable, or disconnected. See [screen behavior](SPACE_PANEL.md).

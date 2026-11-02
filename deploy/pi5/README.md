@@ -174,11 +174,31 @@ idle home-ring status behavior.
 
 ---
 
-## Verification
+## Optional cameras and gesture actions (`compose.camera.yaml`)
 
-Optional camera/gesture processing is deployed with `compose.camera.yaml` in
-addition to the files above. See [Cameras](../../docs/CAMERAS.md) for setup,
-resource limits, credential handling, and gesture-action configuration.
+Include the camera worker alongside the base service and local LLM fallback:
+
+```sh
+docker compose -f compose.yaml -f compose.llm.yaml -f compose.camera.yaml up -d --build
+docker compose -f compose.yaml -f compose.llm.yaml -f compose.camera.yaml ps
+```
+
+Use the same Compose files for later updates. If local Ollama is not installed,
+omit `compose.llm.yaml`. The camera image is configured for ARM64.
+
+Open `/cameras`, add a private RTSP URL, and start with detection-only rules.
+The device/action dropdowns use imported Home Assistant entities. Under **Edit**,
+enable optional event snapshots to retain the triggering image and debugging
+details (seven days, latest 200 events, up to 40 MB of JPEG payload).
+
+URLs/credentials, event metadata, and snapshots remain in the private SQLite data
+volume. Replace the full URL in **Edit** to change credentials; blank preserves
+the saved connection. The separate worker reads a scoped token file and has no
+database or Home Assistant credential access. It pauses during voice processing.
+See [Cameras](../../docs/CAMERAS.md) for resource limits, including the memory
+limit caveat on Pi kernels without cgroup memory accounting.
+
+## Verification
 
 - Check host readiness (board, thermal/throttling flags, free disk, Docker) with
   `python3 tools/check_pi_host.py`.

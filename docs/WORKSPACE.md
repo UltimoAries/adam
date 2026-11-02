@@ -16,20 +16,22 @@ tools work from a fresh checkout.
 - `tools/`: developer, provisioning, and hardware-validation scripts (see [`tools/README.md`](../tools/README.md)).
 - `training/hey_adam/`: reproducible microWakeWord benchmark containers, pinned
   upstream references, and pilot run metadata.
-- `vendor/`: pinned Waveshare V2 hardware references and stock `Hey Jarvis`
+- `vendor/`: pinned Waveshare V2 hardware references, the 1.46 SPD2010 driver, and stock `Hey Jarvis`
   rollback wake-word files with their upstream licenses (`.gitattributes` preserves exact bytes).
 - `docs/` and `artifacts/README.md`: architecture, operation, and historical bring-up guides.
 
 ## Local only (gitignored)
 
 - `headend/data/`: accounts, password hashes, paired device keys, pages, settings,
-  and the local `training_archive/` database/audio.
+  camera RTSP credentials, event snapshots/metadata, camera-worker token, and the
+  local `training_archive/` database/audio.
 - `headend/recordings/` and `artifacts/*` (except `artifacts/README.md`): captured
   audio, transcripts, screenshots, serial logs, and local test outputs.
 - `headend/models/`: downloaded STT, Piper TTS, and local Ollama model weights.
 - `headend/.venv/`, `headend/.browser-test/`: Python virtual environments and browser test profiles.
-- `firmware/build/`, `firmware/managed_components/`, `firmware/sdkconfig`:
-  generated ESP-IDF build outputs (`firmware/sdkconfig.defaults` remains tracked).
+- `firmware/build/`, `firmware/build146/`, `firmware/managed_components/`,
+  `firmware/sdkconfig`, `firmware/sdkconfig.146`: generated ESP-IDF build outputs
+  (`firmware/sdkconfig.defaults` and `firmware/sdkconfig.146.defaults` remain tracked).
 - `backups/`: local firmware rollback images and pre-flash snapshots.
 - `training/hey_adam/results/`, `export/`, `models/`, datasets, and checkpoints.
 - `.env*`, local secrets, tokens, and per-machine editor settings.

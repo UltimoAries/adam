@@ -20,6 +20,10 @@ Utilities in `tools/` support local head-end setup, ESP32-S3 firmware builds, US
 
 ## 2. Firmware Build, Wake Model & Cue Generation
 
+Use `idf.ps1` for the original 1.85C BOX V2. Use `idf146.ps1` for the
+non-suffixed Waveshare 1.46; it keeps `sdkconfig.146` and `build146` separate.
+Never cross-flash these targets. See the [board guide](../docs/BOARD_146.md).
+
 | Script | Purpose |
 | --- | --- |
 | `idf.ps1` | PowerShell wrapper that runs `idf.py` inside `firmware/`. Uses `idf.py` if already on `PATH`; otherwise resolves `$env:IDF_PATH\export.ps1`, `$env:USERPROFILE\.espressif`, or `C:\Espressif\esp-idf\export.ps1` while respecting `$env:IDF_TOOLS_PATH`. |
@@ -55,6 +59,11 @@ All USB serial scripts accept `--port <PORT>` and default to `VOICE_USB_PORT` if
 | `check_connection_log.py` | Validates a `watch_serial.py` capture log for panics, brownouts, frame-counter stalls, stack headroom, and Wi-Fi drops. |
 
 ### Hardware-in-the-Loop Verification
+
+Audio checks that assume two physical microphones or shared-bus loopback apply
+to the 1.85C BOX V2. The 1.46 duplicates its single microphone into diagnostic
+stereo channels and does not support shared-clock loopback. USB snapshots remain
+360×360 logical frames on both boards.
 
 | Script | Purpose |
 | --- | --- |

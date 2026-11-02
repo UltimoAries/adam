@@ -1,12 +1,15 @@
 # Silence-ended questions and faster replies
 
-Introduced in Firmware v13 / head-end v0.6 and carried forward through **Firmware
-v27**: wake-triggered questions end automatically after **1.2 seconds of quiet**
-instead of waiting for a fixed eight-second window, while the head-end keeps its
-default Piper TTS voice warm in a persistent worker process.
+Current firmware (`v30-185` and `v30-146`) ends wake-triggered questions after
+**750 ms of quiet**, rounded up to a complete 20 ms packet, with a **one-second**
+minimum post-trigger capture. Firmware v29 introduced these defaults; earlier
+silence-ended builds used 1.2 seconds of quiet and a two-second minimum. The
+head-end keeps its default Piper TTS voice warm in a persistent worker process.
+See [VOICE_LATENCY.md](VOICE_LATENCY.md) for configurable pause tolerance,
+asynchronous recording writes, shared GPU fallback, and timing diagnostics.
 
 *(Visual note: Firmware v13 showed an animated ear during capture; Firmware
-v22–v27 renders translucent green listening mist over the live weather sky — see
+v22 and later render translucent green listening mist over the live weather sky — see
 [SPACE_PANEL.md](SPACE_PANEL.md).)*
 
 ## On-device silence endpoint (`preroll.c`)
@@ -22,10 +25,10 @@ can extend capture up to the post-trigger cap:
   the uploaded waveform).
 - Resets the quiet timer whenever at least **30 ms** of above-threshold activity
   is observed.
-- Ends capture cleanly on a 20 ms packet boundary after **1.2 seconds** of quiet
+- Ends capture cleanly on a 20 ms packet boundary after **750 ms** of quiet
   following speech, retaining both the two-second pre-roll and the quiet tail
   (short mid-sentence pauses of ~500–600 ms keep the utterance intact).
-- Enforces a **2-second** minimum post-trigger capture, a **5-second** no-activity
+- Enforces a **1-second** minimum post-trigger capture, a **5-second** no-activity
   timeout when nobody speaks, and a **13-second** post-trigger maximum (15 seconds
   total including two seconds of pre-roll).
 - Keeps **Settings → Voice → Talk 8S** and dashboard **Listen 8 sec** as fixed
@@ -46,8 +49,8 @@ record containing little-endian `0xffffffff`, the exact transmitted packet count
 a 1-byte endpoint reason (`1` = silence, `2` = max duration, `3` = no activity),
 and 635 zero padding bytes, followed by the HTTP zero-length chunk terminator.
 
-The server requires a valid end record, matching packet count, at least two
-post-trigger seconds, zero trailing bytes, and a clean HTTP stream completion;
+The server requires a valid end record, matching packet count, at least one
+post-trigger second, zero trailing bytes, and a clean HTTP stream completion;
 truncated or out-of-order streams are discarded. Legacy fixed-length uploads
 remain supported.
 
@@ -67,7 +70,10 @@ active Piper ONNX model** warm inside a dedicated worker subprocess:
   polling from **1.5 s** to **250 ms** for 30 seconds so synthesized replies play
   promptly without increasing idle LAN traffic.
 
-## Measured latency impact
+## Historical latency measurements
+
+These measurements describe the earlier silence-ended implementation and its
+original test hardware. They are not current Pi or 1.46-board benchmarks.
 
 - **Piper TTS synthesis:** Cold worker + model load measured ~3.5–3.8 s for a
   typical weather sentence, dropping to **~385–405 ms** once warm in
