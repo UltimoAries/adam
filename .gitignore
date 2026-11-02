@@ -16,6 +16,8 @@ node_modules/
 /headend/recordings/
 /headend/models/
 /headend/config.local.toml
+/adam_message.py
+/ADAM_MESSAGE.MD
 /headend/.browser-test/
 /deploy/model-host/ollama.json
 /deploy/model-host/speech.json

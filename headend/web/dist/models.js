@@ -1,72 +1,58 @@
 'use strict';
 const $=id=>document.getElementById(id);
-const kinds=['stt','tts'];
 function notice(text){$('notice').textContent=text;$('notice').hidden=!text;}
-function node(tag,text){const item=document.createElement(tag);if(text)item.textContent=text;return item;}
-function field(kind,key,label,type='text'){
-  const wrapper=node('label',label),input=node('input');input.id=kind+'-'+key;input.type=type;
-  if(type==='password'){input.autocomplete='new-password';input.maxLength=512;}
-  wrapper.append(input);return wrapper;
+function node(tag,text){const n=document.createElement(tag);if(text)n.textContent=text;return n;}
+function picker(id,title){
+  const box=node('div'),label=node('label',title),select=node('select');select.id=id;select.add(new Option('Select an installed model',''));label.append(select);
+  const help=node('p');help.id=id+'-help';help.className='help';help.setAttribute('role','status');
+  const details=node('details'),summary=node('summary','Enter a model ID manually'),manual=node('input');manual.id=id+'-manual';manual.maxLength=200;manual.setAttribute('aria-label',title+' manual ID');
+  manual.oninput=()=>setModel(id,manual.value.trim());select.onchange=()=>{manual.value=select.value;};details.append(summary,manual);box.append(label,help,details);return box;
 }
-for(const kind of kinds){
-  const section=node('fieldset');section.className='panel';section.append(node('legend',kind==='stt'?'Speech recognition':'Speaking voice'));
-  const label=node('label','Where to run'),select=node('select');select.id=kind+'-mode';
-  select.add(new Option('Local only','local'));select.add(new Option('Prefer remote, fall back locally','prefer_remote'));label.append(select);section.append(label);
-  section.append(field(kind,'url','Service base URL','url'),field(kind,'model','Model ID'));
-  if(kind==='tts')section.append(field(kind,'voice','Voice ID'));
-  section.append(field(kind,'api_key','API key (optional)','password'));
-  const keyStatus=node('p');keyStatus.id=kind+'-keyStatus';keyStatus.className='help';section.append(keyStatus);
-  const clear=field(kind,'clear_key','Remove saved API key','checkbox');clear.className='inline';section.append(clear);
-  section.append(field(kind,'timeout_seconds','Remote timeout (seconds)','number'),field(kind,'cooldown_seconds','Retry remote after (seconds)','number'));
-  const status=node('p');status.id=kind+'-status';status.className='help model-status';status.setAttribute('role','status');section.append(status);
-  $('profiles').append(section);
-  $(kind+'-url').placeholder='http://gpu-computer:8000/v1';$(kind+'-url').maxLength=250;$(kind+'-model').maxLength=200;
-  $(kind+'-timeout_seconds').min=1;$(kind+'-timeout_seconds').max=30;$(kind+'-timeout_seconds').step='0.5';
-  $(kind+'-cooldown_seconds').min=5;$(kind+'-cooldown_seconds').max=300;
-}
-async function api(options){
-  const response=await fetch('/api/models/settings',options);
-  if(response.status===401){$('modelForm').hidden=true;$('signIn').hidden=false;for(const k of kinds)$(k+'-api_key').value='';throw Error('Sign in to edit model services.');}
+function setModel(id,value){const select=$(id);if(value&&!Array.from(select.options).some(o=>o.value===value))select.add(new Option(value+' (saved or manual)',value));select.value=value;$(id+'-manual').value=value;}
+$('sttPicker').append(picker('stt_model','Speech recognition model'));
+$('chatPicker').append(picker('conversation_model','Conversation model'));
+async function request(path,body){
+  const response=await fetch(path,body);
+  if(response.status===401){$('processingForm').hidden=true;$('signIn').hidden=false;$('api_key').value='';throw Error('Sign in to edit model services.');}
   const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Unable to update model services.');return data;
 }
-function status(data){for(const k of kinds){const p=data[k];$(k+'-status').textContent=(p.last_provider?'Last request: '+p.last_provider.replace('_',' ')+'. ':'No speech requests since startup or settings change. ')+(p.last_error?p.last_error+'. ':'')+(p.retry_in_seconds?'Remote retry in '+p.retry_in_seconds+' seconds.':'');}}
+const jsonBody=(data,method='POST')=>({method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+const textKeys=['mode','gpu_url','stt_model','conversation_model'];
+const numberKeys=['speech_port','conversation_port','stt_timeout','conversation_timeout','cooldown_seconds'];
+function settings(){const data={};for(const k of textKeys)data[k]=$(k).value.trim();for(const k of numberKeys)data[k]=Number($(k).value);data.api_key=$('api_key').value;data.clear_key=$('clear_key').checked;data.conversation_enabled=$('conversation_enabled').checked;return data;}
+function serviceUrls(){
+  const url=new URL($('gpu_url').value.trim());
+  if(!['http:','https:'].includes(url.protocol)||url.port||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('Enter the GPU computer address without a port or path.');
+  const host=url.protocol+'//'+url.hostname;
+  return {speech:host+':'+Number($('speech_port').value)+'/v1',chat:host+':'+Number($('conversation_port').value)};
+}
+function catalogPayload(id){const urls=serviceUrls();return id==='stt_model'?{url:urls.speech,api_key:$('api_key').value,clear_key:$('clear_key').checked}:{remote_url:urls.chat};}
+async function refreshModels(){
+  $('refreshModels').disabled=true;
+  await Promise.all(['stt_model','conversation_model'].map(async id=>{
+    const help=$(id+'-help');help.textContent='Checking installed models…';
+    try{
+      const payload=catalogPayload(id),snapshot=JSON.stringify(payload);
+      const data=await request(id==='stt_model'?'/api/models/stt/catalog':'/api/conversation/models',jsonBody(payload));
+      if(JSON.stringify(catalogPayload(id))!==snapshot){help.textContent='Address or key changed. Refresh again.';return;}
+      const selected=$(id).value;$(id).replaceChildren(new Option('Select an installed model',''));for(const model of data.models)$(id).add(new Option(model.label,model.id));setModel(id,selected);
+      help.textContent=`${data.models.length} installed model${data.models.length===1?'':'s'} found. `+(selected&&!data.models.some(m=>m.id===selected)?'Your selection was kept but is not listed. ':'')+'Choose a model, then save. Refresh does not load or download models.';
+    }catch(error){help.textContent=error.message+' Your selection is unchanged.';}
+  }));$('refreshModels').disabled=false;
+}
+function status(data){$('processingStatus').textContent=(data.retry_in_seconds?`GPU unavailable: using Pi, retry in ${data.retry_in_seconds} seconds. `:'')+`Last transcription: ${data.stt_provider||'no requests yet'}. Last conversation: ${data.conversation_provider||'no requests yet'}.`+ (data.mode==='custom'?' Existing service preferences differ; choose a mode and save to combine them.':'');}
 function apply(data){
-  for(const k of kinds){const p=data[k];for(const key of ['mode','url','model','timeout_seconds','cooldown_seconds'])$(k+'-'+key).value=p[key];if(k==='tts')$(k+'-voice').value=p.voice;$(k+'-api_key').value='';$(k+'-clear_key').checked=false;$(k+'-keyStatus').textContent=p.has_key?'Key saved. Leave blank to keep it for this URL.':'No key saved.';}
-  status(data);$('modelForm').hidden=false;$('signIn').hidden=true;
+  for(const k of [...textKeys,...numberKeys])if(k.endsWith('_model'))setModel(k,data[k]);else $(k).value=data[k];
+  $('api_key').value='';$('clear_key').checked=false;$('conversation_enabled').checked=data.conversation_enabled;
+  $('keyStatus').textContent=data.has_key?'Key saved. Leave blank to keep it for the same speech address.':'No key saved.';
+  $('fallbackModels').textContent=`Local recognition: ${data.local_stt_model}. Local conversation: ${data.local_conversation_model}.`;
+  status(data);$('processingForm').hidden=false;$('signIn').hidden=true;if(data.stt_model)refreshModels();
 }
-$('modelForm').onsubmit=async event=>{
-  event.preventDefault();$('saveModels').disabled=true;
-  try{const data={};for(const k of kinds){data[k]={};for(const key of ['mode','url','model','api_key'])data[k][key]=$(k+'-'+key).value;for(const key of ['timeout_seconds','cooldown_seconds'])data[k][key]=Number($(k+'-'+key).value);data[k].clear_key=$(k+'-clear_key').checked;if(k==='tts')data[k].voice=$(k+'-voice').value;}
-    apply(await api({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}));notice('Saved. New requests use these settings.');
-  }catch(error){notice(error.message);}finally{$('saveModels').disabled=false;}
-};
-api().then(apply).catch(error=>notice(error.message));
-setInterval(()=>{if(!document.hidden&&!$('modelForm').hidden)api().then(status).catch(error=>notice(error.message));},10000);
-
-const conversationKeys=['remote_url','remote_model','local_url','local_model','remote_timeout_seconds','local_timeout_seconds','cooldown_seconds'];
-async function conversationApi(path='/settings',options){
-  const response=await fetch('/api/conversation'+path,options);
-  if(response.status===401){$('conversationForm').hidden=true;$('signIn').hidden=false;throw Error('Sign in to edit conversation settings.');}
-  const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Check the conversation settings.');return data;
-}
-function conversationStatus(data){
-  $('conversation-status').textContent=(data.last_provider?'Last answer: '+data.last_provider+'. ':'No model answers since startup or settings change. ')+(data.last_error?data.last_error+'. ':'')+(data.retry_in_seconds?'Retrying the preferred computer in '+data.retry_in_seconds+' seconds.':'');
-}
-function applyConversation(data){
-  for(const key of conversationKeys)$('conversation-'+key).value=data[key];
-  $('conversation-enabled').checked=data.enabled;$('conversationForm').hidden=false;conversationStatus(data);
-}
-$('conversationForm').onsubmit=async event=>{
-  event.preventDefault();$('saveConversation').disabled=true;
-  try{const data={enabled:$('conversation-enabled').checked};for(const key of conversationKeys)data[key]=key.endsWith('_seconds')?Number($('conversation-'+key).value):$('conversation-'+key).value;
-    applyConversation(await conversationApi('/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}));notice('Conversation settings saved.');
-  }catch(error){notice(error.message);}finally{$('saveConversation').disabled=false;}
-};
+$('refreshModels').onclick=refreshModels;
+$('processingForm').onsubmit=async event=>{event.preventDefault();$('saveProcessing').disabled=true;try{apply(await request('/api/processing/settings',jsonBody(settings(),'PUT')));notice('Saved. New requests use these settings.');}catch(error){notice(error.message);}finally{$('saveProcessing').disabled=false;}};
 $('testConversation').onclick=async()=>{
-  const text=$('conversation-question').value.trim();if(!text){$('conversation-question').focus();return;}
-  $('testConversation').disabled=true;$('conversation-answer').textContent='Thinking…';
-  try{const result=await conversationApi('/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});$('conversation-answer').textContent=result.text||'Enable and save conversation settings to try an answer.';conversationStatus(await conversationApi());
-  }catch(error){$('conversation-answer').textContent=error.message;}finally{$('testConversation').disabled=false;}
+  const text=$('conversation-question').value.trim();if(!text){$('conversation-question').focus();return;}$('testConversation').disabled=true;$('conversation-answer').textContent='Thinking…';
+  try{const result=await request('/api/conversation/test',jsonBody({text}));$('conversation-answer').textContent=result.text||'Enable and save conversation settings to try an answer.';status(await request('/api/processing/settings'));}catch(error){$('conversation-answer').textContent=error.message;}finally{$('testConversation').disabled=false;}
 };
-conversationApi().then(applyConversation).catch(error=>notice(error.message));
-setInterval(()=>{if(!document.hidden&&!$('conversationForm').hidden)conversationApi().then(conversationStatus).catch(error=>notice(error.message));},10000);
+request('/api/processing/settings').then(apply).catch(error=>notice(error.message));
+setInterval(()=>{if(!document.hidden&&!$('processingForm').hidden)request('/api/processing/settings').then(status).catch(error=>notice(error.message));},10000);

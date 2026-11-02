@@ -499,14 +499,17 @@ class QueryService:
         return True
 
     def _run(self, entry, text, is_time=False):
+        from .latency import mark
         try:
             if time.time()-entry['started']>90:
                 raise ValueError('Question expired while waiting for processing')
             started=time.monotonic()
             result = self.answer(text, entry['unit_id'])
             result['lookup_ms']=round((time.monotonic()-started)*1000)
+            mark(entry, 'answer_ready')
             if not self.closed and result.get('text') and (is_time or self.settings().enabled):
                 entry['reply'] = self.deliver(result, entry['unit_id'])
+                mark(entry, 'reply_ready')
             else:
                 entry['reply'] = result
         except Exception as exc:

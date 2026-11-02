@@ -22,12 +22,12 @@ void voice_buffer_feed(voice_buffer_t *b,const int16_t *mono,bool cache_history)
     if (b->capturing) {
         memcpy(b->live[b->recorded++].pcm,mono,sizeof(voice_block_t));
         // Ignore the chime for endpoint detection, but retain all of its PCM.
-        // Thirty ms of above-floor activity resets a 1.2-second quiet timer.
+        // Thirty ms of above-floor activity resets the configurable quiet timer.
         if (b->automatic && b->recorded>50) {
             if (energy>b->threshold) {
                 if (++b->voiced>=3) { b->speech_seen=true;b->quiet=0; }
             } else { b->voiced=0;++b->quiet; }
-            if (b->recorded%2==0 && b->recorded>=200 && b->speech_seen && b->quiet>=120) {
+            if (b->recorded%2==0 && b->recorded>=100 && b->speech_seen && b->quiet>=VOICE_QUIET_BLOCKS) {
                 b->capturing=false;b->reason=1;
             } else if (b->recorded>=500 && !b->speech_seen) {
                 b->capturing=false;b->reason=3;

@@ -247,7 +247,160 @@ def _supports_metric(metric: str, target_raw: str, entity_id: str, attrs: dict) 
     return True
 
 
+MAX_COMPOUND_CLAUSES = 4
+
+_PLURAL_SUFFIXES = {
+    'light': 'lights?',
+    'lights': 'lights?',
+    'switch': 'switch(?:es)?',
+    'switches': 'switch(?:es)?',
+    'lamp': 'lamps?',
+    'lamps': 'lamps?',
+    'fan': 'fans?',
+    'fans': 'fans?',
+    'door': 'doors?',
+    'doors': 'doors?',
+    'lock': 'locks?',
+    'locks': 'locks?',
+    'window': 'windows?',
+    'windows': 'windows?',
+    'blind': 'blinds?',
+    'blinds': 'blinds?',
+    'shade': 'shades?',
+    'shades': 'shades?',
+}
+_SHARED_NOUNS = set(_PLURAL_SUFFIXES)
+
+_HA_CLAUSE_STARTER = (
+    r'(?:(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?)'
+    r'(?:'
+    r'(?:turn|switch)\s+(?:on\b|off\b|the\b|[a-z0-9])|'
+    r'(?:open|close|stop|lock|unlock|play|pause|activate|run|press|set|dim)\s+(?:the\b|[a-z0-9])|'
+    r'(?:is|are)\s+(?:any\b|all\b|the\b|there\b|[a-z0-9])|'
+    r'(?:what\s+is|what\s*\'?s|whats|which|how\s+(?:many|warm|hot|cold|cool|chilly|humid)|check|read)\b'
+    r')'
+)
+
+
+def has_negation(text: str) -> bool:
+    if not isinstance(text, str):
+        return False
+    lower = normalized(text)
+    return bool(
+        re.search(r'\b(?:do not|don t|dont|never)\b', lower)
+        or re.search(r'\b(?:can|could|would) you (?:please )?not\b', lower)
+        or re.search(r'(?:\A|\band )not\b', lower)
+    )
+
+
+def strip_wake_and_polite(text: str) -> str:
+    cleaned = re.sub(r'^\s*(?:hey|okay|ok)[ ,]+(?:jarvis|adam)\b[\s,.!?]*', '', text or '', flags=re.I)
+    cleaned = re.sub(r'^\s*(?:please[ ,]+)?(?:can|could|would)\s+you[ ,]+(?:please[ ,]+)?', '', cleaned, flags=re.I)
+    cleaned = cleaned.strip().rstrip('.!?').strip()
+    return re.sub(r'^please\s+|\s+please$', '', cleaned, flags=re.I).strip()
+
+
+def is_ha_control_clause(text: str) -> bool:
+    cleaned = strip_wake_and_polite(text)
+    return bool(
+        re.match(
+            r'^(?:turn|switch|open|close|stop|lock|unlock|play|pause|activate|run|press|set|dim)\b',
+            cleaned,
+            flags=re.I,
+        )
+    )
+
+
+def split_explicit_clauses(text: str) -> list[str]:
+    """Split compound utterances at conjunctions followed by an explicit verb/query starter."""
+    cleaned = strip_wake_and_polite(text)
+    if not cleaned:
+        return []
+    parts = re.split(
+        r'(?:,\s*and\s+then\s+|,\s*then\s+|\s+and\s+then\s+|\s+then\s+|,\s*and\s+also\s+|\s+and\s+also\s+|,\s*also\s+|,\s*and\s+|\s+and\s+|,\s+)(?='
+        + _HA_CLAUSE_STARTER
+        + r')',
+        cleaned,
+        flags=re.I,
+    )
+    return [p.strip().rstrip('.!?,').strip() for p in parts if p and p.strip()]
+
+
+def _split_target_list(raw_targets: str) -> list[str]:
+    items = [p.strip() for p in re.split(r'(?:,\s*and\s+|,\s+|\s+and\s+)', raw_targets.strip(), flags=re.I)]
+    if len(items) < 2 or any(not item for item in items):
+        return []
+    return items
+
+
+def expand_shared_verb_clause(clause: str) -> list[tuple[str, str | None]]:
+    """Expand a single-verb multi-target clause into (primary, trailing_noun_fallback) pairs."""
+    cleaned = strip_wake_and_polite(clause)
+    if not cleaned:
+        return []
+
+    def _build(items: list[str], fmt) -> list[tuple[str, str | None]]:
+        last_words = normalized(items[-1]).split()
+        shared_noun = last_words[-1] if last_words and last_words[-1] in _SHARED_NOUNS else None
+        out = []
+        for idx, item in enumerate(items):
+            primary = fmt(item)
+            fallback = None
+            if idx < len(items) - 1 and shared_noun:
+                words = normalized(item).split()
+                if words and words[-1] not in _SHARED_NOUNS:
+                    fallback = fmt(f'{item} {shared_noun}')
+            out.append((primary, fallback))
+        return out
+
+    m = re.fullmatch(r'(turn|switch)\s+(on|off)\s+(.+)', cleaned, flags=re.I)
+    if m:
+        items = _split_target_list(m.group(3))
+        if items:
+            return _build(items, lambda t: f'{m.group(1)} {m.group(2)} {t}')
+
+    m = re.fullmatch(r'(turn|switch)\s+(.+?)\s+(on|off)', cleaned, flags=re.I)
+    if m:
+        items = _split_target_list(m.group(2))
+        if items:
+            return _build(items, lambda t: f'{m.group(1)} {t} {m.group(3)}')
+
+    m = re.fullmatch(r'(open|close|stop|lock|unlock|play|pause|activate|run|press)\s+(.+)', cleaned, flags=re.I)
+    if m:
+        items = _split_target_list(m.group(2))
+        if items:
+            return _build(items, lambda t: f'{m.group(1)} {t}')
+
+    m = re.fullmatch(
+        r'(set\s+(?:the\s+)?(?:brightness|speed|position|volume|temperature|color\s+temperature|value|mode|option|color)\s+of|set|dim)\s+(.+?)\s+to\s+(.+)',
+        cleaned,
+        flags=re.I,
+    )
+    if m:
+        items = _split_target_list(m.group(2))
+        if items:
+            return _build(items, lambda t: f'{m.group(1)} {t} to {m.group(3)}')
+
+    return [(cleaned, None)]
+
+
+def _target_pattern(raw: str, entity_id: str = '', numeric: bool = False) -> str:
+    parts = raw.rsplit(' ', 1)
+    if len(parts) == 2 and parts[1] in _PLURAL_SUFFIXES:
+        suffix_pat = _PLURAL_SUFFIXES[parts[1]]
+        if entity_id.startswith('lock.') and parts[1] in ('lock', 'locks'):
+            core = re.escape(parts[0]) + r'(?: ' + suffix_pat + r')?'
+        else:
+            core = re.escape(parts[0]) + r' ' + suffix_pat
+    else:
+        core = re.escape(raw)
+    tail = r'(?: switch(?:es)?| lights?| smart switch(?:es)?)?' if numeric else r'(?: switch(?:es)?| lights?| smart switch(?:es)?| sensors?| locks?)?'
+    return r'(?:the )?' + core + tail
+
+
 def intent(text, name, entity_id='', attrs=None):
+    if has_negation(text):
+        return None
     text = re.sub(r'^\s*(?:hey|okay|ok)[ ,]+(?:jarvis|adam)\b[\s,.!?]*', '', text, flags=re.I)
     text = re.sub(r'^\s*(?:please[ ,]+)?(?:can|could|would)\s+you[ ,]+(?:please[ ,]+)?', '', text, flags=re.I)
     # Preserve signed/decimal numbers for parameterized commands. A minus sign
@@ -256,11 +409,11 @@ def intent(text, name, entity_id='', attrs=None):
     numeric_text = re.sub(r'^please\s+|\s+please$', '', numeric_text)
     text = normalized(text)
     text = re.sub(r'^please\s+|\s+please$', '', text)
-    if re.search(r'\b(?:do not|don t|dont|never)\b', text):
+    if has_negation(text):
         return None
     target_raw = normalized(name)
     if not target_raw: return None
-    target = r'(?:the )?'+re.escape(target_raw)+r'(?: switch| lights?| smart switch| sensor)?'
+    target = _target_pattern(target_raw, entity_id=entity_id, numeric=False)
     for pattern in (r'(?:turn|switch) (on|off) '+target, r'(?:turn|switch) '+target+r' (on|off)'):
         match = re.fullmatch(pattern, text)
         if match: return match[1], None
@@ -304,7 +457,8 @@ def intent(text, name, entity_id='', attrs=None):
     match = re.fullmatch(r'(open|close|stop|lock|unlock|play|pause|activate|run|press) '+target, text)
     if match: return ('activate' if match[1] == 'run' else match[1]), None
     clean = numeric_text
-    numeric_target = r'(?:the )?'+re.escape(re.sub(r'[^\w.\-]+', ' ', name.casefold()).strip())+r'(?: switch| lights?| smart switch)?'
+    numeric_raw = re.sub(r'[^\w.\-]+', ' ', name.casefold()).strip()
+    numeric_target = _target_pattern(numeric_raw, entity_id=entity_id, numeric=True)
     number = r'(-?\d+(?:\.\d+)?)'
     match = re.fullmatch(r'set '+numeric_target+r' to '+number+r' degrees', clean)
     if match: return 'temperature', float(match[1])

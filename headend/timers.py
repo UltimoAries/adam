@@ -553,12 +553,15 @@ class TimerService:
         return True
 
     def _run(self, entry: dict, text: str):
+        from .latency import mark
         try:
             started = time.monotonic()
             result = self.answer(text, entry.get('unit_id'))
             result['lookup_ms'] = round((time.monotonic() - started) * 1000)
+            mark(entry, 'answer_ready')
             if not self.closed and result.get('text'):
                 entry['reply'] = self.deliver(result, entry['unit_id'])
+                mark(entry, 'reply_ready')
             else:
                 entry['reply'] = result
         except Exception as exc:

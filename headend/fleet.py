@@ -22,6 +22,8 @@ from .timers import TimerService, add_timer_routes
 from .training_archive import InteractionArchive
 from .training_api import add_training_routes
 from .conversation import ConversationService, add_conversation_routes
+from .recording_work import RecordingWork
+from .latency import mark
 
 
 class Credentials(BaseModel):
@@ -60,6 +62,7 @@ class Fleet:
         self.conversation = ConversationService(state, self.queries.deliver)
         self.panel = PanelService(self.queries, enabled=panel_updates)
         self.archive = InteractionArchive(state.directory/'training_archive')
+        self.recordings = RecordingWork(self.archive, self.store, self.jobs)
         self.sessions = {}
         self.active = set()
         self.commands = {}
@@ -74,9 +77,8 @@ class Fleet:
         add_conversation_routes(self.router,self.conversation)
 
     def transcription_done(self, entry, job):
-        warning = self.archive.complete(entry.get('archive_id'),job)
-        if warning:
-            entry['archive_warning'] = warning
+        mark(entry, 'transcribed')
+        entry.setdefault('timings_ms', {}).update({k: job[k] for k in ('queue_ms', 'inference_ms') if k in job})
         if job['status'] != 'done' or entry['trigger'] != 'wake':
             return
         if self.timers.submit(entry, job):
@@ -169,6 +171,8 @@ class Fleet:
             sessions = []
             for item in list(self.sessions.values())[-100:][::-1]:
                 entry = dict(item)
+                if 'timings_ms' in item:
+                    entry['timings_ms'] = dict(item['timings_ms'])
                 if entry.get('job_id'):
                     try:
                         job = self.jobs.get(entry['job_id'])
@@ -265,6 +269,9 @@ class Fleet:
         async def ack(request: Request,unit_id: str,page_id: str,options: PageAck):
             self.require_unit(request,unit_id)
             self.state.ack(unit_id,page_id,options.status,options.detail)
+            for entry in list(self.sessions.values()):
+                if entry['unit_id'] == unit_id and entry.get('reply', {}).get('page_id') == page_id:
+                    mark(entry, 'page_' + options.status)
             return {'accepted':True}
 
         @router.post('/api/units/{unit_id}/audio',status_code=202)
@@ -320,7 +327,7 @@ class Fleet:
                             if automatic and struct.unpack_from('<I',packet)[0]==0xffffffff:
                                 actual=struct.unpack_from('<I',packet,4)[0]
                                 reason=packet[8]
-                                if actual!=sequence or not preroll_ms//20+100<=actual<=frames or reason not in (1,2,3) or any(packet[9:]):
+                                if actual!=sequence or not preroll_ms//20+50<=actual<=frames or reason not in (1,2,3) or any(packet[9:]):
                                     raise ValueError('Invalid audio end record')
                                 ended=True
                                 entry.update(expected=sequence*640,endpoint_reason={1:'silence',2:'limit',3:'no_activity'}[reason])
@@ -332,29 +339,40 @@ class Fleet:
                             entry['received'] = session.buffered_bytes
                 if buffered or (not ended if automatic else sequence!=frames):
                     raise ValueError('Incomplete audio session')
-                entry.update(capture_ms=sequence*20-preroll_ms,upload_ms=round((time.time()-entry['started'])*1000))
+                entry.update(capture_ms=sequence*20-preroll_ms,upload_ms=round((time.time()-entry['started'])*1000),
+                             processing_started_monotonic=time.monotonic(), timings_ms={})
                 utterance = session.finish()
                 name = 'Wi-Fi ' + datetime.now(timezone.utc).strftime('%H-%M-%S') + '.wav'
                 raw = wav_bytes(16000,np.frombuffer(utterance.pcm,dtype='<i2'))
-                archived = await asyncio.to_thread(self.archive.capture,raw,entry)
-                entry.update(archive_id=archived['id'],archive_status=archived['status'],archive_warning=archived['warning'])
-                clip = None
+                entry.update(recording_status='pending', clip_id=None, archive_id=None, archive_warning='')
+                work = self.recordings.reserve(entry)
+                def completed(result):
+                    try:
+                        self.transcription_done(entry, result)
+                    finally:
+                        self.recordings.completed(work, entry, result)
                 try:
-                    clip = await asyncio.to_thread(self.store.add,raw,name,'stream')
-                except ClipStorageFull:
-                    entry['recording_warning'] = 'Diagnostic clip not saved: the clip library is full. Voice processing continues.'
-                except OSError:
-                    entry['recording_warning'] = 'Diagnostic clip not saved: storage is unavailable. Voice processing continues.'
-                clip_id = clip['id'] if clip else None
-                job = self.jobs.submit(clip,raw,1,True,
+                    mark(entry, 'stt_submitted')
+                    job = self.jobs.submit(None,raw,1,True,
                                        allow_queue=True,trigger=utterance.trigger,model_id=utterance.model_id,
-                                       on_done=lambda result: self.transcription_done(entry,result))
-                entry.update(status='queued',clip_id=clip_id,job_id=job['id'])
-                warning = await asyncio.to_thread(self.archive.attach_job,entry.get('archive_id'),job['id'])
-                if warning:
-                    entry['archive_warning'] = warning
-                return dict(session_id=session_id,clip_id=clip_id,job_id=job['id'],archive_id=entry.get('archive_id'),
-                            archive_warning=entry.get('archive_warning',''))
+                                       on_done=completed)
+                except Exception as exc:
+                    if work is not None:
+                        # Retain the original for diagnostic retranscription even
+                        # when the bounded recognition queue rejects this session.
+                        self.recordings.completed(work, entry, dict(status='error', error='Transcription was not queued: '+str(exc)[:160]))
+                        saved = self.recordings.pool.submit(self.recordings.save, work, raw, name, entry, None)
+                        await asyncio.wrap_future(saved)
+                    raise
+                entry.update(status='queued',job_id=job['id'])
+                if work is not None:
+                    saved = self.recordings.pool.submit(self.recordings.save, work, raw, name, entry, job['id'])
+                    # Older diagnostic clients expect recording IDs in the response.
+                    # v29 speakers opt in to immediate acceptance so they can poll.
+                    if request.headers.get('x-recording-async') != '1':
+                        await asyncio.wrap_future(saved)
+                return dict(session_id=session_id,clip_id=entry.get('clip_id'),job_id=job['id'],archive_id=entry.get('archive_id'),
+                            recording_status=entry['recording_status'], archive_warning=entry.get('archive_warning',''))
             except ClientDisconnect:
                 session.cancel()
                 entry.update(status='aborted',error='Device cancelled or disconnected')

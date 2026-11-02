@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 from .clips import MAX_UPLOAD, mono_16k, parse_wav, wav_bytes
 from .session import Trigger, Utterance
 from .stt import Transcript
+from .model_catalog import bounded_body, catalog_json, catalog_models
 
 
 class ServiceProfile(BaseModel):
@@ -68,6 +69,7 @@ class ModelServices:
         self.lock = threading.RLock()
         self.generation = 0
         self.runtime = {}
+        self.gpu_failover = None
         with state.db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS model_services (id INTEGER PRIMARY KEY CHECK(id=1), settings TEXT NOT NULL)')
             row = db.execute('SELECT settings FROM model_services WHERE id=1').fetchone()
@@ -120,12 +122,22 @@ class ModelServices:
         # Includes connection, upload and streamed body, rather than a per-chunk timeout.
         return await asyncio.wait_for(request(), timeout=profile.timeout_seconds)
 
+    async def catalog(self, kind, profile):
+        if not profile.url:
+            raise HTTPException(400, 'Enter the speech service address first, ending in /v1.')
+        with self.lock:
+            saved = getattr(self.settings, kind)
+            key = '' if profile.clear_key else profile.api_key or (saved.api_key if profile.url == saved.url else '')
+        data = await catalog_json(profile.url+'/models', self.transport, key)
+        return catalog_models(data, kind)
+
     def route(self, kind, remote, local):
         with self.lock:
             profile = getattr(self.settings, kind).model_copy(deep=True)
             generation = self.generation
             attempt = (profile.mode == 'prefer_remote' and
-                       self.clock() >= self.runtime.get(kind, {}).get('retry_at', 0))
+                       self.clock() >= self.runtime.get(kind, {}).get('retry_at', 0) and
+                       not (kind == 'stt' and self.gpu_failover and self.gpu_failover.remaining()))
         if attempt:
             try:
                 output = remote(profile)
@@ -135,6 +147,8 @@ class ModelServices:
                     if generation == self.generation:
                         self.runtime[kind] = dict(last_error='Remote speech failed: '+type(exc).__name__,
                             retry_at=self.clock()+profile.cooldown_seconds)
+                        if kind == 'stt' and self.gpu_failover:
+                            self.gpu_failover.fail(profile.cooldown_seconds)
             else:
                 with self.lock:
                     if generation == self.generation:
@@ -215,15 +229,30 @@ def add_model_routes(app, services):
     @router.put('/api/models/settings')
     async def save(request: Request):
         try:
-            raw = bytearray()
-            async for chunk in request.stream():
-                raw.extend(chunk)
-                if len(raw) > 8192:
-                    raise ValueError('Settings too large')
-            options = ServiceSettings.model_validate_json(bytes(raw))
+            raw = await bounded_body(request)
+            # Validate each section separately; never return Pydantic input values.
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                raise ValueError('Expected settings')
+            for kind, label in (('stt', 'Speech recognition'), ('tts', 'Speaking voice')):
+                try:
+                    profile = ServiceProfile.model_validate(data.get(kind, {}))
+                except ValueError:
+                    raise HTTPException(400, label+': check the address, selected model, API key and timing values.') from None
+                if kind == 'tts' and profile.mode == 'prefer_remote' and not profile.voice:
+                    raise HTTPException(400, 'Speaking voice: select a speech-generation model and enter its voice ID, or choose Local only. Ollama belongs under Conversation.')
+            options = ServiceSettings.model_validate(data)
         except ValueError:
             # Pydantic's standard 422 includes rejected inputs, including API keys.
             raise HTTPException(400, 'Check the mode, URL, model, voice and timeout (1–30 seconds).') from None
         return await asyncio.to_thread(services.save, options)
+
+    @router.post('/api/models/{kind}/catalog')
+    async def catalog(kind: Literal['stt', 'tts'], request: Request):
+        try:
+            profile = ServiceProfile.model_validate_json(await bounded_body(request))
+        except ValueError:
+            raise HTTPException(400, 'Enter a valid speech service address and API key. Use the base URL ending in /v1.') from None
+        return await services.catalog(kind, profile)
 
     app.include_router(router)

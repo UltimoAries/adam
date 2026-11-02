@@ -51,6 +51,14 @@ class ConversationTests(unittest.TestCase):
         self.assertNotIn('tools', data)
         self.assertEqual(self.service.public()['last_provider'], 'remote')
 
+    def test_local_mode_never_contacts_remote_for_answers_or_probes(self):
+        self.options.mode = 'local'
+        self.service.save(self.options)
+        self.assertEqual(self.service.answer('Why is the sky blue?')['provider'], 'local')
+        self.service._probe_models(self.options, self.service.generation)
+        self.assertTrue(self.calls)
+        self.assertTrue(all(r.url.host == '127.0.0.1' for r in self.calls))
+
     def test_outage_uses_local_skips_remote_during_cooldown_and_recovers(self):
         self.remote_down = True
         self.assertEqual(self.service.answer('Why is the sky blue?')['provider'], 'local')

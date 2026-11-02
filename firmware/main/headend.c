@@ -300,12 +300,6 @@ static bool upload(const config_t *cfg,const char *model)
     if (stopped) return false;
     unsigned cue=audio_play_listen_cue();
     if (!cue) return false;
-    while (audio_clip_busy()) {
-        if (esp_timer_get_time()-start>12000000) { audio_stop();return false; }
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-    if (!audio_message_delivered(cue)) return false;
-    vTaskDelay(pdMS_TO_TICKS(120));
     portENTER_CRITICAL(&guard); stopped=cancelled || buffer.failed; portEXIT_CRITICAL(&guard);
     if (stopped) return false;
     esp_http_client_handle_t handle=client(cfg,"audio",HTTP_METHOD_POST);
@@ -315,6 +309,11 @@ static bool upload(const config_t *cfg,const char *model)
              (unsigned long)esp_random(),(unsigned long)esp_random());
     esp_http_client_set_header(handle,"Content-Type","application/octet-stream");
     esp_http_client_set_header(handle,"X-Session-ID",session);
+    // Recognition and paging can proceed while diagnostic recordings are saved.
+    esp_http_client_set_header(handle,"X-Recording-Async","1");
+    char trigger_header[24];
+    snprintf(trigger_header,sizeof(trigger_header),"%lld",(long long)((esp_timer_get_time()-start)/1000));
+    esp_http_client_set_header(handle,"X-Trigger-Elapsed-Ms",trigger_header);
     unsigned packets=(prefix+limit)/2;
     char frame_header[16],prefix_header[16];
     snprintf(frame_header,sizeof(frame_header),"%u",packets);
@@ -325,6 +324,12 @@ static bool upload(const config_t *cfg,const char *model)
     esp_http_client_set_header(handle,"X-Trigger",model[0]?"wake":"touch");
     if (model[0]) esp_http_client_set_header(handle,"X-Wake-Model",model);
     bool ok=esp_http_client_open(handle,automatic?-1:(int)(packets*644))==ESP_OK;
+    // Connect during the cue, then preserve the existing playback exclusion.
+    while (ok && audio_clip_busy()) {
+        if (esp_timer_get_time()-start>12000000) { audio_stop();ok=false;break; }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    ok=ok && audio_message_delivered(cue);
     if (ok && (mic_recording() || audio_is_playing())) ok=false;
     unsigned sequence=0;
     for (;sequence<packets && ok;++sequence) {
@@ -428,7 +433,7 @@ static void task(void *unused)
             }
             portEXIT_CRITICAL(&guard);
             char path[340];
-            snprintf(path,sizeof(path),"poll?firmware=v28&wake_model=%s&busy=%d%s%s",wake_model_id(),
+            snprintf(path,sizeof(path),"poll?firmware=v29&wake_model=%s&busy=%d%s%s",wake_model_id(),
                      headend_busy() || mic_recording() || audio_is_playing() || audio_clip_busy(),
                      dismissed[0]?"&dismissed=":"",dismissed);
             bool ok=request(&cfg,path,NULL,poll_response,sizeof(poll_response));
@@ -512,7 +517,7 @@ void headend_status(void)
     printf("OK headend configured=%d state=%s listening=%d sent_bytes=%u errors=%u completed=%u cancelled=%u pages_delivered=%u queue_failed=%d stack_min=%u wake_model=%s preroll_ms=%u captured_ms=%u history_ms=%u input_gaps=%u buffer_bytes=%u\n",
            paired,headend_state(),active,bytes,errors,done,cancel_count,pages,bad,stack,wake_model_id(),
            pre,live,history,gaps,storage?(unsigned)(VOICE_STORAGE_BLOCKS*sizeof(*storage)):0);
-    printf("OK endpoint automatic=%d reason=%u threshold_energy=%u silence_ms=1200 max_live_ms=13000\n",automatic,reason,threshold);
+    printf("OK endpoint automatic=%d reason=%u threshold_energy=%u silence_ms=%u max_live_ms=13000\n",automatic,reason,threshold,(unsigned)CONFIG_ADAM_ENDPOINT_SILENCE_MS);
     headend_panel_t p;headend_panel(&p);
     printf("OK panel clock=%d weather=%s temperature=%d units=%c offset=%d age_ms=%lld location=%s llm=%s timers=%u\n",
            p.clock_ready,p.weather_state,p.temperature,p.units?p.units:'F',p.utc_offset,

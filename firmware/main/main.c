@@ -456,7 +456,7 @@ void app_main(void)
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb_cfg));
     usb_serial_jtag_vfs_use_driver();
     setvbuf(stdout,NULL,_IONBF,0);
-    printf("Display UI v28: countdown timer bars, 2-tap cancel & 1-tap silence, Waveshare 1.85C V2\n");
+    printf("Display UI v29: faster wake endpoint and upload, Waveshare 1.85C V2\n");
     preferences_init();
     init_display();
     headend_init();

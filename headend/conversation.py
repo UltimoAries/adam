@@ -8,8 +8,10 @@ import time
 from urllib.parse import urlsplit
 
 import httpx
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from .latency import mark
+from .model_catalog import bounded_body, catalog_json, catalog_models
 
 
 SYSTEM = ('You are ADAM, a home voice assistant. Answer in one short sentence, '
@@ -30,6 +32,7 @@ def control_request(text):
 class ConversationSettings(BaseModel):
     model_config = ConfigDict(extra='forbid')
     enabled: bool = False
+    mode: str = Field(default='prefer_remote', pattern=r'^(local|prefer_remote)$')
     remote_url: str = Field(default='http://gpu-host.local:11434', max_length=250)
     remote_model: str = Field(default='qwen3.5:9b', min_length=1, max_length=150)
     local_url: str = Field(default='http://127.0.0.1:11434', max_length=250)
@@ -81,6 +84,7 @@ class ConversationService:
         self.slots = threading.BoundedSemaphore(4)
         self.closed, self.generation = False, 0
         self.retry_at, self.last_provider, self.last_error = 0, None, None
+        self.gpu_failover = None
         with state.db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS conversation_settings (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)')
             row = db.execute('SELECT data FROM conversation_settings WHERE id=1').fetchone()
@@ -132,6 +136,8 @@ class ConversationService:
 
     def _probe_models(self, options, generation):
         async def check():
+            if options.mode == 'local':
+                return False, await self._model_loaded(options, 'local')
             return await asyncio.gather(self._model_loaded(options, 'remote'), self._model_loaded(options, 'local'))
         try:
             remote, local = asyncio.run(check())
@@ -158,7 +164,8 @@ class ConversationService:
                     self.probe_pending = False
             if self.checked_at is None or now-self.checked_at > 15:
                 return 'unknown'
-            if self.availability.get('remote') and now >= self.retry_at:
+            if (self.availability.get('remote') and now >= self.retry_at and
+                    not (self.gpu_failover and self.gpu_failover.remaining())):
                 return 'remote'
             if self.availability.get('local'):
                 return 'local'
@@ -189,7 +196,8 @@ class ConversationService:
     def answer(self, text):
         with self.lock:
             options, generation = self.options.model_copy(), self.generation
-            attempt_remote = self.clock() >= self.retry_at
+            attempt_remote = (options.mode != 'local' and self.clock() >= self.retry_at and
+                              not (self.gpu_failover and self.gpu_failover.remaining()))
         if not options.enabled:
             return dict(status='ignored', text='')
         text = question(text)
@@ -211,6 +219,8 @@ class ConversationService:
                         self.last_error = error
                         if not local:
                             self.retry_at = self.clock()+options.cooldown_seconds
+                            if self.gpu_failover:
+                                self.gpu_failover.fail(options.cooldown_seconds)
                 continue
             with self.lock:
                 if generation == self.generation:
@@ -252,10 +262,12 @@ class ConversationService:
             started = self.clock()
             result = self.answer(text)
             result['lookup_ms'] = round((self.clock()-started)*1000)
+            mark(entry, 'answer_ready')
             with self.lock:
                 valid = not self.closed and self.options.enabled and generation == self.generation
             if valid:
                 entry['reply'] = self.deliver(result, entry['unit_id']) if result['text'] else result
+                mark(entry, 'reply_ready')
             else:
                 entry['reply'] = dict(status='ignored', text='', error='Conversation settings changed')
         except Exception:
@@ -275,6 +287,14 @@ class ConversationRequest(BaseModel):
 
 
 def add_conversation_routes(router, service):
+    @router.post('/api/conversation/models')
+    async def models(request: Request):
+        try:
+            options = ConversationSettings.model_validate_json(await bounded_body(request))
+        except ValueError:
+            raise HTTPException(400, 'Enter a valid Ollama address without a path or credentials.') from None
+        return catalog_models(await catalog_json(options.remote_url+'/api/tags', service.transport), 'conversation')
+
     @router.get('/api/conversation/settings')
     def settings():
         return service.public()

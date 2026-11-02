@@ -1,6 +1,9 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include "sdkconfig.h"
+
+#define VOICE_QUIET_BLOCKS ((CONFIG_ADAM_ENDPOINT_SILENCE_MS+9)/10)
 
 enum { VOICE_BLOCK_SAMPLES=160, VOICE_HISTORY_BLOCKS=200, VOICE_LIVE_BLOCKS=1300,
        VOICE_STORAGE_BLOCKS=2*VOICE_HISTORY_BLOCKS+VOICE_LIVE_BLOCKS };

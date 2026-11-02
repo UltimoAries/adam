@@ -49,13 +49,15 @@ bool voice_buffer_selftest(void)
     for (unsigned n=0;n<200;++n) voice_buffer_feed(&b,mono,true);
     ok=ok && voice_buffer_begin_auto(&b) && b.prefix==200;
     for (unsigned n=0;n<400 && b.capturing;++n) {
-        int amplitude=(n<100 || (n>=160 && n<200))?600:20;
+        int amplitude=(n<100 || (n>=150 && n<200))?600:20;
         for (unsigned i=0;i<VOICE_BLOCK_SAMPLES;++i) mono[i]=(i%2)?amplitude:-amplitude;
         voice_buffer_feed(&b,mono,true);
-        if (n==159) ok=ok && b.capturing; // 600 ms thinking pause.
+        if (n==149) ok=ok && b.capturing; // 500 ms thinking pause.
     }
-    ok=ok && !b.capturing && b.reason==1 && b.recorded==320;
-    ok=ok && voice_buffer_packet(&b,259,(uint8_t *)packet) && !voice_buffer_packet(&b,260,(uint8_t *)packet);
+    unsigned expected=200+((VOICE_QUIET_BLOCKS+1)/2)*2;
+    ok=ok && !b.capturing && b.reason==1 && b.recorded==expected;
+    unsigned packets=(b.prefix+expected)/2;
+    ok=ok && voice_buffer_packet(&b,packets-1,(uint8_t *)packet) && !voice_buffer_packet(&b,packets,(uint8_t *)packet);
     voice_buffer_end(&b);
     ok=ok && voice_buffer_begin_auto(&b);
     for (unsigned n=0;n<VOICE_LIVE_BLOCKS && b.capturing;++n) {

@@ -8,7 +8,7 @@ This document gives AI coding agents and developers an end-to-end architectural 
 
 ADAM is a local-first voice assistant, intercom, and smart-home controller built from three cooperating tiers on a private LAN:
 
-1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, currently Firmware `v28`):**
+1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, currently Firmware `v29`):**
    - **Target hardware:** **Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2** (`16 MB` flash, `8 MB` octal PSRAM, `360×360` round ST77916 QSPI LCD, CST816 capacitive touch, ES7210 dual-mic ADC, ES8311 DAC/amp).
    - **Physical orientation:** Operate with the **USB-C port pointing down**. On the rear/side enclosure buttons, the **upper button is `BOOT` (`GPIO0`)** and the **lower button is hardware `RESET`**.
    - **On-device responsibilities:** Continuous 16 kHz stereo capture over a shared full-duplex I2S bus, local on-device **Hey Adam** wake-word detection (`hey_adam-20261030-c60f0456` via `micro_wake_word` + TFLite Micro), 2-second rolling pre-roll ring buffer, quiet 120 ms trigger cue, chunked silence-ended HTTP audio upload, mono PCM page playback, local monotonic countdown timer bars, touch UI, and the animated sky/weather/LLM-ring home screen.
@@ -21,6 +21,7 @@ ADAM is a local-first voice assistant, intercom, and smart-home controller built
 3. **Optional LAN GPU Model Host (`deploy/model-host/`):**
    - Offloads STT to **Speaches** (`deepdml/faster-whisper-large-v3-turbo-ct2`, OpenAI-compatible `:8000/v1`) and conversational LLM replies to **Ollama** (`qwen3.5:9b` / `adam:latest`, `:11434`).
    - `headend/model_services.py` and `headend/conversation.py` enforce short per-request timeouts and 30-second failure cooldowns, automatically falling back to local Pi CPU STT (`base.en`) and local Pi Ollama (`qwen3.5:0.8b`) without dropping requests.
+   - `headend/processing.py` provides one GPU host and processing preference, saves both routes together, and shares their failure cooldown. Piper speaking voice stays local on the Pi.
 
 ---
 
@@ -51,12 +52,13 @@ Wake transcripts route through five deterministic stages before touching the LLM
    - Matches imported, enabled entities by exact normalized local name, optional HA friendly name, or alias, plus room-first sensor phrasing (*"What's the temperature in the bedroom?"*, *"How warm is the nursery?"*).
    - Handles read-only multi-entity summaries (`summary_intent`: `doors`, `windows`, `openings`, `locks`, `lights`, `leaks`).
    - Executes bounded service calls (`controls()` / `action_payload()`) with state readback confirmation and durable `(unit_id, session_id)` replay protection.
+   - Supports up to four explicitly named actions in one utterance, validating the complete plan before sending commands and rejecting conflicting or ambiguous targets.
 5. **Fallback City Temperature → Conversational LLM (`headend/queries.py` → `headend/conversation.py`):**
    - Ambiguous temperature questions unmatched in Home Assistant (*"What's the temperature in Seattle?"*) fall back to Open-Meteo; everything else routes to `ConversationService` (`adam:latest` on GPU → `qwen3.5:0.8b` on Pi, stripped of `<think>` tags and capped to speakable length).
 
 ### C. Reply Delivery & Home Panel Polling (`GET /api/units/{unit_id}/poll`)
 - Spoken replies synthesize 16 kHz mono PCM via `VoiceService`, normalize peak amplitude in `Fleet.playback_pcm()` (**strictly `0.1s`–`15.0s`**, `3,200`–`480,000` bytes), and enqueue a targeted page (5-minute expiry).
-- Each idle speaker polls `/api/units/{unit_id}/poll?firmware=v28&wake_model=...&busy=0|1[&dismissed=id1,id2]` every `1.5s` (`250 ms` for 30s after a wake capture):
+- Each idle speaker polls `/api/units/{unit_id}/poll?firmware=v29&wake_model=...&busy=0|1[&dismissed=id1,id2]` every `1.5s` (`250 ms` for 30s after a wake capture):
   - Receives `panel` metadata: `unix_time`, `utc_offset`, `device_name`, `weather_state`/`temperature`/`weather_code`, `llm_provider` (`remote` → green perimeter ring, `local` → soft yellow ring), and up to 6 active per-unit `timers` (`id`, `label`, `duration_s`, `end_unix`).
   - `headend.c` converts `end_unix` into monotonic `esp_timer_get_time()` `deadline_us` so active timers keep counting down accurately offline.
   - When a page is offered (`{"type": "page", "id": ..., "bytes": ...}`), the unit fetches `/pages/{id}/audio`, acks `playing`, plays through `audio.c` (with 250 ms post-unmute silence priming so first syllables never clip), and acks `delivered`.
@@ -77,6 +79,8 @@ Wake transcripts route through five deterministic stages before touching the LLM
 | `headend/home_assistant.py` | Bounded `httpx` HA client (no redirects, no token echo, no POST retries), summaries, `/api/home-assistant/*` |
 | `headend/conversation.py` | GPU/Pi Ollama streaming chat client, `<think>` stripping, background 5s model-readiness probe for the LCD ring |
 | `headend/model_services.py` | Remote Speaches STT offload with automatic local `faster-whisper` fallback |
+| `headend/processing.py`, `model_catalog.py` | Combined GPU/Pi settings, shared cooldown, and read-only installed model discovery |
+| `headend/recording_work.py`, `latency.py` | Bounded asynchronous recording persistence and per-session latency measurements |
 | `headend/voices.py` | Verified Piper `.tar.gz` voice package registry and persistent warm ONNX synthesis workers |
 | `headend/training_archive.py` | Bounded WAV/transcript/wake-boundary archive and human review store |
 | `headend/web/dist/` | Vanilla HTML/CSS/JS pages (`/`, `/queries`, `/home-assistant`, `/models`, `/voices`, `/training`, `/bench`, `/map`) |
@@ -110,7 +114,7 @@ Because this repository is public, **no private LAN IPs, hostnames, tokens, or S
 Use the Python 3.12 virtualenv in `headend/.venv`:
 
 ```powershell
-# Full head-end unit & integration suite (141 tests; uses FastAPI TestClient)
+# Full head-end unit & integration suite (160 tests; uses FastAPI TestClient)
 .\headend\.venv\Scripts\python.exe -m unittest discover -s headend -t . -q
 
 # GPU model-host controller tests

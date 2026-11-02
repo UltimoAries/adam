@@ -99,9 +99,16 @@ Replace each example name with the device's Adam name, HA name or alias.
 - "Set volume of Television to 25 percent."
 - "Activate Evening Scene." / "Run Bedtime."
 - "Set option of Light Preset to Brightness preset 1."
+- "Turn off the living room light and lock the front door."
+- "Turn on the bedroom and back porch lights." / "Turn off Bedroom, close Garage Door and lock Front Door."
 
-Matching is local, with one explicit named target/action per command. Pronouns,
-multiple actions, negated commands, arbitrary service names and general
+Matching is local and exact-name based. One utterance may hold up to four
+device actions or status checks, joined by "and", "then" or commas, or sharing
+one verb ("turn on A and B lights"). Compound commands fail closed: if any part
+names an unknown or ambiguous device, has an unsupported value, conflicts with
+another part on the same device, or contains a negation, **no** command is sent
+and the reply names the problem. Actions run in spoken order and the replies are
+combined into one short sentence. Pronouns, arbitrary service names and general
 conversation are not handled. HA receives only the bounded service call and
 entity target, not the transcript or microphone audio.
 

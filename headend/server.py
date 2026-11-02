@@ -26,6 +26,7 @@ from .state import State
 from .fleet import Fleet
 from .voices import VoiceService
 from .model_services import ModelServices, RoutedTranscriber, RoutedSpeech, add_model_routes
+from .processing import add_processing_routes
 
 ROOT = Path(__file__).resolve().parent
 
@@ -64,7 +65,8 @@ class TranscriptionJobs:
                 raise HTTPException(409,'The transcription queue is full')
             job_id = uuid.uuid4().hex
             job = dict(id=job_id, clip_id=clip['id'] if clip else None, channel=channel, boost=boost,
-                       status='queued', text='', cancelled=False,trigger=Trigger(trigger).value,model_id=model_id)
+                       status='queued', text='', cancelled=False,trigger=Trigger(trigger).value,model_id=model_id,
+                       submitted_monotonic=time.monotonic())
             self.jobs[job_id] = job
             if self.active is None:
                 self.active = job_id
@@ -83,6 +85,7 @@ class TranscriptionJobs:
                     return
                 self.active = job_id
                 job['status'] = 'running'
+                job['queue_ms'] = round((started-job['submitted_monotonic'])*1000)
                 channel, boost = job['channel'], job['boost']
             rate, samples = parse_wav(raw)
             pcm, gain = mono_16k(rate, samples, channel, boost)
@@ -128,6 +131,11 @@ class TranscriptionJobs:
             if job_id not in self.jobs:
                 raise HTTPException(404, 'Transcription job not found')
             return dict(self.jobs[job_id])
+
+    def attach_clip(self, job_id, clip_id):
+        with self.lock:
+            if job_id in self.jobs:
+                self.jobs[job_id]['clip_id'] = clip_id
 
     def cancel(self, job_id):
         with self.lock:
@@ -181,6 +189,7 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
             await asyncio.gather(asyncio.to_thread(jobs.preload),asyncio.to_thread(warm_voice))
         yield
         await asyncio.to_thread(jobs.pool.shutdown,wait=True,cancel_futures=False)
+        await asyncio.to_thread(fleet.recordings.close)
         fleet.home_assistant.close(); fleet.timers.close()
         fleet.panel.close()
         fleet.conversation.close()
@@ -348,6 +357,7 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
         return FileResponse(ROOT/'web'/'dist'/'models.html')
 
     add_model_routes(app,services)
+    add_processing_routes(app,services,fleet.conversation)
     app.include_router(fleet.router)
     app.mount('/assets', StaticFiles(directory=ROOT / 'web' / 'dist'), name='assets')
     return app

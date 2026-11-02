@@ -77,7 +77,8 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(row['name'],'Lounge');self.assertEqual(row['default_name'],'Main ceiling')
         self.command('Turn on Front room')
         self.assertEqual(self.actions[-1][1]['entity_id'],'light.lounge')
-        restored = HomeAssistantService(self.app.state.auth,None,self.service.client)
+        restored = HomeAssistantService(self.app.state.auth,None,
+                                       HomeAssistantClient(self.service.client.transport))
         try:
             result = restored.answer('Turn off Lounge',restored.settings())
             self.assertEqual(result['entity_id'],'light.lounge')
@@ -91,9 +92,43 @@ class InventoryTests(unittest.TestCase):
         self.save('light.bedroom',name='Living Room')
         self.assertEqual(self.command('Turn on Living Room')['status'],'ambiguous')
         self.assertTrue(self.refresh()['light.lounge']['conflicts'])
-        for phrase in ('Do not turn on Bedroom','Turn on Living Room and Bedroom','Turn it on'):
+        # A compound command containing an ambiguous name sends nothing at all.
+        self.assertEqual(self.command('Turn on Living Room and unlock Front Door')['status'],'ambiguous')
+        for phrase in ('Do not turn on Bedroom','Turn it on'):
             self.assertEqual(self.command(phrase)['status'],'ignored')
         self.assertEqual(self.actions,[])
+
+    def test_compound_commands_act_on_each_exact_target(self):
+        result = self.command('Hey Adam turn on the living room light and unlock the front door')
+        self.assertEqual(result['status'], 'answered', result)
+        self.assertEqual(self.actions, [('/api/services/light/turn_on', {'entity_id': 'light.lounge'}),
+                                        ('/api/services/lock/unlock', {'entity_id': 'lock.front'})])
+        self.assertEqual(result['text'], 'Living Room is now on, and Front Door is now unlocked.')
+        self.assertEqual(len(result['results']), 2)
+        # Shared verb across two targets, with the trailing noun applied to both.
+        self.rows[1]['state'] = 'on'
+        self.actions.clear()
+        both = self.command('Turn off the living room and bedroom lights')
+        self.assertEqual(both['text'], 'Living Room and Bedroom are now off.')
+        self.assertEqual([a[1]['entity_id'] for a in self.actions], ['light.lounge', 'light.bedroom'])
+        # Three clauses with a comma list.
+        self.actions.clear()
+        self.command('Turn on Bedroom, open Garage Door and lock Front Door')
+        self.assertEqual([a[0] for a in self.actions], ['/api/services/light/turn_on', '/api/services/cover/open_cover',
+                                                       '/api/services/lock/lock'])
+
+    def test_compound_commands_fail_closed(self):
+        # One unknown device: name it, and send nothing.
+        result = self.command('Turn on Bedroom and turn off the kitchen light')
+        self.assertEqual(result['status'], 'unsupported')
+        self.assertIn('turn off the kitchen light', result['text'])
+        # Negation anywhere, conflicting actions, or too many clauses: send nothing.
+        self.assertEqual(self.command("Don't turn on Bedroom and unlock Front Door")['status'], 'ignored')
+        self.assertEqual(self.command('Turn on Bedroom and turn off Bedroom')['status'], 'unsupported')
+        self.assertEqual(self.command('Turn on Bedroom, Living Room, Office Fan, Garage Door and Thermostat')['status'], 'unsupported')
+        # An unsupported action on one target blocks the whole command before anything is sent.
+        self.assertEqual(self.command('Turn on Bedroom and set Thermostat to 70 degrees')['status'], 'unsupported')
+        self.assertEqual(self.actions, [])
 
     def test_polite_commands_keep_exact_targets_and_reject_negation(self):
         self.assertEqual(self.command('Hey Adam, can you unlock the front door?')['state'], 'unlocked')
@@ -101,8 +136,7 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(self.command('Hey, Adam, could you please turn on Bedroom?')['state'], 'on')
         self.assertEqual(self.actions[-1], ('/api/services/light/turn_on', {'entity_id': 'light.bedroom'}))
         before = len(self.actions)
-        for phrase in ('Can you not unlock Front Door?', 'Could you please turn on Bedroom and Living Room?',
-                       'Would you unlock a different door?'):
+        for phrase in ('Can you not unlock Front Door?', 'Would you unlock a different door?'):
             self.assertEqual(self.command(phrase)['status'], 'ignored')
         self.assertEqual(len(self.actions), before)
 

@@ -9,9 +9,12 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
-from .ha_devices import (ENTITY_PATTERN, attributes_for_inventory, controls, capabilities,
-                         format_entity_state, normalized, summary_intent, action_payload)
+from .ha_devices import (ENTITY_PATTERN, MAX_COMPOUND_CLAUSES, attributes_for_inventory, controls,
+                         capabilities, expand_shared_verb_clause, format_entity_state, has_negation,
+                         is_ha_control_clause, normalized, split_explicit_clauses,
+                         strip_wake_and_polite, summary_intent, action_payload)
 from .ha_inventory import HomeAssistantInventory
+from .latency import mark
 
 
 class HomeAssistantSettings(BaseModel):
@@ -101,28 +104,32 @@ class HomeAssistantClient:
     """Bounded HTTP requests without redirects, proxy environment or action retries."""
     def __init__(self, transport=None):
         self.transport = transport
+        self.http = httpx.Client(timeout=httpx.Timeout(10, connect=3), follow_redirects=False,
+                                 trust_env=False, transport=transport,
+                                 limits=httpx.Limits(max_connections=8, max_keepalive_connections=4, keepalive_expiry=30))
+
+    def close(self):
+        self.http.close()
 
     def request(self, settings, method, path, body=None, limit=256000):
         if not settings.token or not settings.token.get_secret_value():
             raise HomeAssistantUnavailable('Save a Home Assistant access token first.')
         try:
-            with httpx.Client(timeout=httpx.Timeout(10, connect=3), follow_redirects=False,
-                              trust_env=False, transport=self.transport) as client:
-                with client.stream(method, settings.url + path, json=body,
-                                   headers={'Authorization': 'Bearer ' + settings.token.get_secret_value()}) as response:
-                    if response.status_code in (401, 403):
-                        raise HomeAssistantUnavailable('Home Assistant rejected the access token. Check its account and permissions.')
-                    response.raise_for_status()
-                    raw = bytearray()
-                    deadline = time.monotonic() + 15
-                    for chunk in response.iter_bytes(chunk_size=4096):
-                        raw.extend(chunk)
-                        if len(raw) > limit or time.monotonic() > deadline:
-                            raise HomeAssistantUnavailable('Home Assistant response exceeded its limit.')
-                    data = json.loads(raw)
-                    if not isinstance(data, (dict, list)):
-                        raise ValueError('Expected an object')
-                    return data
+            with self.http.stream(method, settings.url + path, json=body,
+                                  headers={'Authorization': 'Bearer ' + settings.token.get_secret_value()}) as response:
+                if response.status_code in (401, 403):
+                    raise HomeAssistantUnavailable('Home Assistant rejected the access token. Check its account and permissions.')
+                response.raise_for_status()
+                raw = bytearray()
+                deadline = time.monotonic() + 15
+                for chunk in response.iter_bytes(chunk_size=4096):
+                    raw.extend(chunk)
+                    if len(raw) > limit or time.monotonic() > deadline:
+                        raise HomeAssistantUnavailable('Home Assistant response exceeded its limit.')
+                data = json.loads(raw)
+                if not isinstance(data, (dict, list)):
+                    raise ValueError('Expected an object')
+                return data
         except (httpx.HTTPError, ValueError) as exc:
             # Remote bodies, URLs, and exception text must never expose credentials.
             message = ('Home Assistant could not confirm the result. Check the device state before trying again.'
@@ -409,22 +416,240 @@ class HomeAssistantService:
             text = f'All {reachable} {plural} are {calm_word}.{suffix}'
         return dict(base, status='answered', text=text[:195])
 
-    def answer(self, text, settings, before_action=lambda: True):
+    @staticmethod
+    def _prevalidate_device_step(row: dict, action: str, value) -> None:
+        if action == 'status':
+            return
+        entity_id = row['entity_id']
+        resolved = action
+        if resolved == 'level':
+            resolved = {
+                'light': 'brightness', 'fan': 'speed', 'cover': 'position', 'climate': 'temperature',
+                'media_player': 'volume', 'number': 'value', 'input_number': 'value',
+            }.get(entity_id.split('.')[0], 'level')
+        attrs = dict(row.get('attributes') or {})
+        if row.get('state'):
+            attrs.setdefault('_state', row['state'])
+        action_payload(entity_id, attrs, resolved, value)
+
+    def _resolve_candidate_pairs(self, pairs: list[tuple[str, str | None]], settings: HomeAssistantSettings,
+                                 explicit_multi_verb: bool) -> dict:
+        if len(pairs) < 2:
+            return dict(kind='ignored')
+        steps = []
+        matched_count = 0
+        unmatched_clauses = []
+        for primary, fallback in pairs:
+            if has_negation(primary):
+                return dict(kind='ignored')
+            m = self.inventory.matches(settings, primary)
+            if not m and fallback:
+                m = self.inventory.matches(settings, fallback)
+            if len(m) > 1:
+                return dict(kind='ambiguous')
+            if len(m) == 1:
+                matched_count += 1
+                steps.append(('device', m[0][0], m[0][1]))
+                continue
+            cat = summary_intent(primary)
+            if cat:
+                matched_count += 1
+                steps.append(('summary', cat, None))
+                continue
+            unmatched_clauses.append(primary)
+            steps.append(('unmatched', primary, None))
+
+        if len(pairs) > MAX_COMPOUND_CLAUSES:
+            if matched_count > 0:
+                return dict(
+                    kind='unsupported',
+                    text=f'Please ask for up to {MAX_COMPOUND_CLAUSES} device actions at a time. No commands were sent.',
+                )
+            return dict(kind='ignored')
+
+        if matched_count == len(pairs):
+            deduped = []
+            seen_actions: dict[str, tuple] = {}
+            for kind, target, act in steps:
+                if kind == 'device':
+                    eid = target['entity_id']
+                    sig = (act[0], json.dumps(act[1], sort_keys=True) if isinstance(act[1], list) else act[1])
+                    if act[0] != 'status':
+                        if eid in seen_actions:
+                            if seen_actions[eid] == sig:
+                                continue
+                            return dict(
+                                kind='unsupported',
+                                text='Those commands conflict on the same device. No commands were sent.',
+                            )
+                        seen_actions[eid] = sig
+                deduped.append((kind, target, act))
+            return dict(kind='compound', steps=deduped)
+
+        if matched_count > 0 and explicit_multi_verb:
+            bad_ctrl = next((c for c in unmatched_clauses if is_ha_control_clause(c)), None)
+            if bad_ctrl:
+                return dict(kind='partial_unmatched', unmatched=bad_ctrl)
+
+        return dict(kind='ignored')
+
+    def resolve_plan(self, text: str, settings: HomeAssistantSettings) -> dict:
+        if not isinstance(text, str) or len(text) > 300 or has_negation(text):
+            return dict(kind='ignored')
         matches = self.inventory.matches(settings, text)
-        if not matches:
-            category = summary_intent(text)
-            if category:
-                return self._answer_summary(category, settings)
+        if len(matches) == 1:
+            return dict(kind='single', step=('device', matches[0][0], matches[0][1]))
+        if len(matches) > 1:
+            return dict(kind='ambiguous')
+        category = summary_intent(text)
+        if category:
+            return dict(kind='single', step=('summary', category, None))
+
+        explicit = split_explicit_clauses(text)
+        if len(explicit) >= 2:
+            expanded_pairs: list[tuple[str, str | None]] = []
+            for clause in explicit:
+                if self.inventory.matches(settings, clause) or summary_intent(clause):
+                    expanded_pairs.append((clause, None))
+                else:
+                    expanded_pairs.extend(expand_shared_verb_clause(clause))
+            plan = self._resolve_candidate_pairs(expanded_pairs, settings, explicit_multi_verb=True)
+            if plan['kind'] in ('compound', 'ambiguous', 'unsupported'):
+                return plan
+            shared_fallback = expand_shared_verb_clause(strip_wake_and_polite(text))
+            if len(shared_fallback) >= 2:
+                alt = self._resolve_candidate_pairs(shared_fallback, settings, explicit_multi_verb=False)
+                if alt['kind'] in ('compound', 'ambiguous', 'unsupported'):
+                    return alt
+            return plan
+
+        shared = expand_shared_verb_clause(strip_wake_and_polite(text))
+        if len(shared) >= 2:
+            return self._resolve_candidate_pairs(shared, settings, explicit_multi_verb=False)
+        return dict(kind='ignored')
+
+    @staticmethod
+    def _combine_results(results: list[dict], source_url: str) -> dict:
+        if len(results) == 1:
+            return results[0]
+
+        same_pred = None
+        same_names = []
+        for r in results:
+            m = re.fullmatch(r'(.+?) is ((?:now|already) [^.]+)\.', r.get('text', '').strip())
+            if not m or (same_pred is not None and m.group(2) != same_pred):
+                same_names = []
+                break
+            same_pred = m.group(2)
+            same_names.append(m.group(1))
+
+        if same_names and same_pred:
+            if len(same_names) == 2:
+                subject = f'{same_names[0]} and {same_names[1]}'
+            else:
+                subject = f"{', '.join(same_names[:-1])}, and {same_names[-1]}"
+            combined_text = f'{subject} are {same_pred}.'
+        else:
+            any_acted = any(r.get('status') in ('answered', 'sent', 'unconfirmed') for r in results)
+            cleaned = []
+            for r in results:
+                txt = (r.get('text') or '').strip()
+                if not txt:
+                    continue
+                if any_acted and txt.endswith(' is unavailable in Home Assistant. No command was sent.'):
+                    txt = txt[:-len(' No command was sent.')]
+                cleaned.append(txt)
+            if cleaned and all('. ' not in t for t in cleaned):
+                clauses = [t[:-1] if t.endswith('.') else t for t in cleaned]
+                if len(clauses) == 2:
+                    combined_text = f'{clauses[0]}, and {clauses[1]}.'
+                elif len(clauses) >= 3:
+                    combined_text = f"{', '.join(clauses[:-1])}, and {clauses[-1]}."
+                else:
+                    combined_text = cleaned[0]
+            else:
+                combined_text = ' '.join(cleaned)
+
+        if len(combined_text) > 220:
+            short = combined_text[:217].rsplit(' ', 1)[0].rstrip(' ,;:.')
+            combined_text = short + '.'
+
+        statuses = [r.get('status') for r in results]
+        if 'unconfirmed' in statuses:
+            agg_status = 'unconfirmed'
+        elif all(s == 'unavailable' for s in statuses):
+            agg_status = 'unavailable'
+        elif all(s == 'ignored' for s in statuses):
+            agg_status = 'ignored'
+        elif 'sent' in statuses:
+            agg_status = 'sent'
+        else:
+            agg_status = 'answered'
+
+        return dict(
+            source='Home Assistant',
+            source_url=source_url,
+            status=agg_status,
+            text=combined_text,
+            results=results,
+        )
+
+    @staticmethod
+    def unmatched_clause_error(clause: str) -> dict:
+        snippet = ' '.join((clause or '').split())[:60]
+        return dict(
+            status='unsupported',
+            text=f"I could not match '{snippet}'. Check its Adam name in Home Assistant settings. No commands were sent.",
+        )
+
+    def answer(self, text, settings, before_action=lambda: True):
+        plan = self.resolve_plan(text, settings)
+        kind = plan['kind']
+        if kind == 'ignored':
             return dict(status='ignored', text='')
-        if len(matches) != 1:
-            return dict(status='ambiguous', text='That name matches more than one device. Give them distinct Adam names or aliases in the inventory. No command was sent.')
-        row, (action, value) = matches[0]
+        if kind == 'ambiguous':
+            return dict(
+                status='ambiguous',
+                text='That name matches more than one device. Give them distinct Adam names or aliases in the inventory. No command was sent.',
+            )
+        if kind == 'unsupported':
+            return dict(status='unsupported', text=plan['text'])
+        if kind == 'partial_unmatched':
+            return self.unmatched_clause_error(plan['unmatched'])
+        if kind == 'single':
+            step_kind, target, act = plan['step']
+            if step_kind == 'summary':
+                return self._answer_summary(target, settings)
+            try:
+                return self.client.control(settings, target, act[0], act[1], before_action)
+            except ValueError as exc:
+                return dict(status='unsupported', text=str(exc))
+            except HomeAssistantUnavailable as exc:
+                return dict(status='unavailable', text=str(exc), source='Home Assistant', source_url=settings.url)
+
+        steps = plan['steps']
         try:
-            return self.client.control(settings, row, action, value, before_action)
+            for step_kind, target, act in steps:
+                if step_kind == 'device':
+                    self._prevalidate_device_step(target, act[0], act[1])
+        except ValueError as exc:
+            return dict(status='unsupported', text=str(exc))
+
+        results = []
+        try:
+            for step_kind, target, act in steps:
+                if step_kind == 'summary':
+                    res = self._answer_summary(target, settings)
+                else:
+                    res = self.client.control(settings, target, act[0], act[1], before_action)
+                if res.get('status') == 'ignored':
+                    return res
+                results.append(res)
         except ValueError as exc:
             return dict(status='unsupported', text=str(exc))
         except HomeAssistantUnavailable as exc:
             return dict(status='unavailable', text=str(exc), source='Home Assistant', source_url=settings.url)
+        return self._combine_results(results, settings.url)
 
     def speak(self, result, unit_id):
         if not unit_id or not result['text']:
@@ -454,12 +679,20 @@ class HomeAssistantService:
             return (not self.closed and self.settings().enabled and revision == self.revision
                     and (entry is None or (time.time() - entry['started'] <= 30 and self.online(entry['unit_id']))))
 
+    def claim_session(self, unit_id: str, session_id: str) -> bool:
+        with self.state.db() as db:
+            db.execute('DELETE FROM home_assistant_commands WHERE created<?', (time.time() - 30*86400,))
+            return db.execute('INSERT OR IGNORE INTO home_assistant_commands VALUES(?,?,?)',
+                              (unit_id, session_id, time.time())).rowcount > 0
+
     def submit(self, entry, job):
         if self.closed or entry['trigger'] != 'wake' or job['status'] != 'done':
             return
         with self.lock:
             settings = self.settings()
-            if not settings.enabled or (not self.inventory.matches(settings, job['text']) and not summary_intent(job['text'])):
+            plan = self.resolve_plan(job['text'], settings) if settings.enabled else dict(kind='ignored')
+            # 'partial_unmatched' is claimed so the reply names the clause that failed to match.
+            if not settings.enabled or plan['kind'] == 'ignored':
                 entry['reply'] = dict(status='ignored', text='')
                 return False
             if entry.get('home_assistant_submitted'):
@@ -484,15 +717,13 @@ class HomeAssistantService:
                         or time.time() - entry['started'] > 30 or not self.online(entry['unit_id'])):
                     entry['reply'] = dict(status='ignored', text='', error='Command expired, unit is offline, or settings changed')
                     return
-                with self.state.db() as db:
-                    db.execute('DELETE FROM home_assistant_commands WHERE created<?', (time.time() - 30*86400,))
-                    claimed = db.execute('INSERT OR IGNORE INTO home_assistant_commands VALUES(?,?,?)',
-                                         (entry['unit_id'], entry['id'], time.time())).rowcount
-                if not claimed:
+                if not self.claim_session(entry['unit_id'], entry['id']):
                     entry['reply'] = dict(status='ignored', text='', error='This command session was already handled')
                     return
             result = self.answer(text, settings, lambda: self.valid(revision, entry))
+            mark(entry, 'ha_result')
             entry['reply'] = self.speak(result, entry['unit_id']) if not self.closed else result
+            mark(entry, 'reply_ready')
         except Exception:
             entry['reply'] = dict(status='error', text='', error='Home Assistant command failed; it was not retried')
         finally:
@@ -504,6 +735,8 @@ class HomeAssistantService:
             self.closed = True
         self.pool.shutdown(wait=True, cancel_futures=True)
         self.refresh_thread.join(timeout=17)
+        if not self.refresh_thread.is_alive() and hasattr(self.client, 'close'):
+            self.client.close()
 
 
 def add_home_assistant_routes(router, service):

@@ -1,0 +1,9 @@
+menu "ADAM voice capture"
+    config ADAM_ENDPOINT_SILENCE_MS
+        int "Quiet time before ending a wake command (milliseconds)"
+        range 600 1500
+        default 750
+        help
+            Increase to 1200 to restore the previous pause tolerance.
+            Capture ends on a complete 20 ms packet.
+endmenu

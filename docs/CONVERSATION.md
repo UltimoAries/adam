@@ -25,6 +25,26 @@ to new questions. The dashboard shows which provider answered and when it will
 retry the preferred GPU host. The text preview does not play audio or create a
 training archive recording.
 
+The Model services page lists installed GPU models in separate dropdowns for
+speech recognition (Speaches `/v1/models`) and conversation (Ollama `/api/tags`).
+Use **Refresh available models** after installing a model or changing the GPU
+computer address. Discovery does not download, load, select, or save a model.
+Choose both models and use **Save processing settings** to apply them together.
+Saved selections remain available when a service is offline; manual model entry
+is available under the dropdown for advanced setups.
+
+**Follow GPU Control selection (adam:latest)** retains the desktop utility's
+model selection behavior. Selecting another Ollama name pins ADAM to that model
+without changing the GPU utility's alias. A large or unloaded model can take
+longer than the remote timeout and fall back to the Pi on its first request.
+One **Where to run** preference covers transcription and conversation, using one
+GPU computer address without a port. Advanced settings contain the service ports
+(8000 for speech, 11434 for conversation), timeouts and optional speech API key.
+Piper speaking voice always stays on the Pi. Local fallback model settings are
+preserved when changing GPU models. Settings for both routes commit together.
+The authenticated `/api/processing/settings` API supports this combined form;
+the older per-service APIs remain available for existing integrations.
+
 ## Voice behavior
 
 - A new completed wake interaction can generate one short spoken answer.
@@ -43,7 +63,9 @@ training archive recording.
 
 The preferred GPU request has a six-second total deadline, including the streamed
 body. On failure, the Pi answers locally and skips the preferred server for
-30 seconds before retrying on a later question. Local generation has a 20-second
+30 seconds before retrying on a later question. Transcription and conversation
+share this cooldown, so a failed GPU request does not cause a second GPU timeout
+in the same interaction. Local generation has a 20-second
 deadline; if both models fail, ADAM gives a short unavailable response. The
 bounded queue does not run transcription or home control inside the model worker.
 
@@ -81,8 +103,8 @@ of headroom on an 8 GB Pi 5 without undervoltage or thermal throttling. The
 
 The GPU host can also serve preferred Whisper `large-v3-turbo` recognition via
 Speaches, with CPU `base.en` on the Pi as fallback. Piper TTS replies stay on the
-Pi. Recognition and conversation routes are independent, so either GPU service
-can be stopped separately. The desktop control app disables automatic startup on
+Pi. A failure in either GPU service makes both routes prefer their Pi fallbacks
+during the shared cooldown. The desktop control app disables automatic startup on
 **Stop** and restores it on **Start**; closing the window leaves running services
 untouched.
 
