@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADAM · Cameras</title><link rel="stylesheet" href="/assets/fleet.css"><link rel="stylesheet" href="/assets/cameras.css"><script src="/assets/cameras.js" defer></script>
+</head><body><main>
+<header><div class="adam-brand"><span class="eyebrow">ADAM · LOCAL VISION</span><h1>Cameras</h1><p>Turn a deliberate gesture into an action around your home.</p></div><a href="/">Back to devices ↗</a></header>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<section id="signIn" class="panel" hidden><h2>Sign in to ADAM</h2><p><a href="/">Open the dashboard</a> to sign in, then return here.</p></section>
+<div id="cameraDashboard" hidden>
+<section class="panel"><div class="section-title"><div><span class="eyebrow">CAMERA CONNECTIONS</span><h2>Your cameras</h2></div><button id="newCamera" class="primary">Add camera</button></div><p id="workerStatus" role="status" class="help"></p><p class="help">One camera can run at a time on this Pi. Detection pauses while ADAM processes voice requests. Previews update every few seconds; video is not recorded.</p><div id="cameraList" class="camera-grid"></div></section>
+<form id="cameraForm" class="panel" hidden>
+<div class="section-title"><h2 id="formTitle">Add camera</h2><button id="cancelEdit" type="button" class="quiet">Close</button></div>
+<div class="settings-grid"><label>Camera name<input id="cameraName" required maxlength="64" placeholder="Living room camera"></label><label>RTSP connection<input id="rtspUrl" type="password" autocomplete="new-password" maxlength="2048" placeholder="rtsp://username:password@192.168.1.50:554/stream2"></label></div>
+<p id="connectionHelp" class="help">Use the camera's private LAN IPv4 address and low-resolution substream. Credentials are saved on the Pi and are never returned to this page.</p>
+<label class="check"><input id="cameraEnabled" type="checkbox"> Run gesture detection</label>
+<label class="check"><input id="snapshotEvents" type="checkbox"> Save a snapshot when a gesture triggers</label>
+<p class="help">Saves the triggering frame and debugging details for action and detection-only events. Snapshots stay on the Pi for up to 7 days within the latest 200 events (at most 40 MB of images). Turning this off stops new snapshots; existing images can be deleted below.</p>
+<div class="section-title"><div><h3>Gesture rules</h3><p class="help">Choose a gesture, then a device and its action. Start with detection-only to check camera placement. Remove your hand for one second before making a gesture, and between repetitions.</p></div></div>
+<div id="rules"></div><button id="addRule" type="button">Add gesture rule</button>
+<p class="help">Device choices come from <a href="/home-assistant">Home Assistant</a>. Import and enable a device there to use it here.</p>
+<details><summary>Detection settings</summary><div class="settings-grid">
+<label>Hold gesture (seconds)<input id="holdSeconds" type="number" min="0.5" max="5" step="0.5" value="1" required></label>
+<label>Confidence threshold<input id="confidence" type="number" min="0.5" max="0.99" step="0.01" value="0.75" required></label>
+<label>Cooldown (seconds)<input id="cooldownSeconds" type="number" min="3" max="120" value="5" required></label>
+<label>Frames processed per second<input id="fps" type="number" min="1" max="5" value="3" required></label>
+</div></details><button id="saveCamera" class="primary" type="submit">Save camera</button>
+</form>
+<section class="panel"><h2>Recent gesture events</h2><p class="help">“Detected” means no action was enabled. Failed commands are not retried automatically.</p><div id="events" class="history"></div></section>
+</div></main></body></html>

@@ -13,8 +13,13 @@
 #include "esp_heap_caps.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
+#include "board.h"
+#if CONFIG_ADAM_BOARD_146
+#include "esp_lcd_spd2010.h"
+#else
 #include "esp_lcd_st77916.h"
 #include "panel_init_v2.h"
+#endif
 #include "esp_timer.h"
 #include "graphics.h"
 #include "space.h"
@@ -29,7 +34,7 @@
 #include "metrics.h"
 
 // Waveshare ESP32-S3-Touch-LCD-1.85C V2, manufacturer pin mapping.
-enum { WIDTH = 360, HEIGHT = 360, STRIPE = 12, BACKLIGHT = 5 };
+enum { WIDTH = 360, HEIGHT = 360, STRIPE = CONFIG_ADAM_BOARD_146?52:12, BACKLIGHT = 5, PANEL_SIZE=ADAM_PANEL_SIZE };
 static esp_lcd_panel_handle_t panel;
 static SemaphoreHandle_t transfer_done;
 static uint8_t *pixels;
@@ -64,10 +69,30 @@ static void set_brightness(unsigned value)
 static void present(void)
 {
     int64_t start = esp_timer_get_time();
-    for (int y = 0; y < HEIGHT; y += STRIPE) {
+    for (int y = 0; y < PANEL_SIZE; y += STRIPE) {
+        int rows=PANEL_SIZE-y<STRIPE?PANEL_SIZE-y:STRIPE;
+#if CONFIG_ADAM_BOARD_146
+        // Scale the shared UI and rotate in software: SPD2010 has no axis swap.
+        static uint16_t coordinates[PANEL_SIZE];
+        static bool mapped;
+        if (!mapped) {
+            for (int x=0;x<PANEL_SIZE;++x) coordinates[x]=x*WIDTH/PANEL_SIZE;
+            mapped=true;
+        }
+        uint16_t *destination=(uint16_t *)pixels;
+        const uint16_t *source=gfx_buffer();
+        for (int dy=0;dy<rows;++dy) for (int x=0;x<PANEL_SIZE;++x) {
+            int sx=coordinates[x],sy=coordinates[y+dy];
+            if ((rotation==90 || rotation==180)^mirror_x) sx=WIDTH-1-sx;
+            if ((rotation==180 || rotation==270)^mirror_y) sy=HEIGHT-1-sy;
+            if (rotation==90 || rotation==270) { int t=sx;sx=sy;sy=t; }
+            destination[dy*PANEL_SIZE+x]=source[sy*WIDTH+sx];
+        }
+#else
         memcpy(pixels, gfx_buffer() + y * WIDTH, WIDTH * STRIPE * 2);
-        ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel, 0, y, WIDTH,
-                                                 y + STRIPE, pixels));
+#endif
+        ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel, 0, y, PANEL_SIZE,
+                                                 y + rows, pixels));
         // Keep the buffer intact until the DMA transaction has completed.
         if (xSemaphoreTake(transfer_done, pdMS_TO_TICKS(2000)) != pdTRUE) {
             printf("ERR display transfer timeout\n");
@@ -112,12 +137,22 @@ static void init_display(void)
 {
     // Keep the amplifier quiet and the backlight off during panel startup.
     const gpio_config_t outputs = {
-        .pin_bit_mask = (1ULL << BACKLIGHT) | (1ULL << 15),
+        .pin_bit_mask = (1ULL << BACKLIGHT)
+#if !CONFIG_ADAM_BOARD_146
+            | (1ULL << 15)
+#endif
+        ,
         .mode = GPIO_MODE_OUTPUT,
     };
     ESP_ERROR_CHECK(gpio_config(&outputs));
     ESP_ERROR_CHECK(gpio_set_level(BACKLIGHT, 0));
+#if CONFIG_ADAM_BOARD_146
+    // Manufacturer power-hold output; microphone BCLK uses GPIO15 on this board.
+    ESP_ERROR_CHECK(gpio_set_direction(7,GPIO_MODE_OUTPUT));
+    ESP_ERROR_CHECK(gpio_set_level(7,1));
+#else
     ESP_ERROR_CHECK(gpio_set_level(15, 0));
+#endif
     const ledc_timer_config_t timer = {
         .speed_mode = LEDC_LOW_SPEED_MODE, .timer_num = LEDC_TIMER_0,
         .duty_resolution = LEDC_TIMER_13_BIT, .freq_hz = 5000,
@@ -158,7 +193,7 @@ static void init_display(void)
         .data2_io_num = 42, .data3_io_num = 41,
         .data4_io_num = -1, .data5_io_num = -1,
         .data6_io_num = -1, .data7_io_num = -1,
-        .max_transfer_sz = WIDTH * STRIPE * 2,
+        .max_transfer_sz = PANEL_SIZE * STRIPE * 2,
         .flags = SPICOMMON_BUSFLAG_MASTER,
     };
     ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &spi_cfg, SPI_DMA_CH_AUTO));
@@ -169,6 +204,7 @@ static void init_display(void)
         .flags.quad_mode = true,
     };
     esp_lcd_panel_io_handle_t io;
+#if !CONFIG_ADAM_BOARD_146
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST,
                                             &io_cfg, &io));
     ESP_ERROR_CHECK(esp_lcd_panel_io_rx_param(io, 0x0B000400,
@@ -176,6 +212,7 @@ static void init_display(void)
     printf("LCD ID: %02X %02X %02X %02X\n",
            panel_id[0], panel_id[1], panel_id[2], panel_id[3]);
     ESP_ERROR_CHECK(esp_lcd_panel_io_del(io));
+#endif
 
     transfer_done = xSemaphoreCreateBinary();
     assert(transfer_done);
@@ -184,6 +221,9 @@ static void init_display(void)
     io_cfg.user_ctx = transfer_done;
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST,
                                             &io_cfg, &io));
+#if CONFIG_ADAM_BOARD_146
+    spd2010_vendor_config_t vendor_cfg = {.flags.use_qspi_interface = true};
+#else
     st77916_vendor_config_t vendor_cfg = {.flags.use_qspi_interface = true};
     const uint8_t alternate_id[] = {0x00, 0x02, 0x7F, 0x7F};
     const uint8_t default_id[] = {0x00, 0x7F, 0x7F, 0x7F};
@@ -198,15 +238,20 @@ static void init_display(void)
         printf("ERR unexpected LCD ID; stop before panel initialization\n");
         abort();
     }
+#endif
     const esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = -1, .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16, .vendor_config = &vendor_cfg,
     };
+#if CONFIG_ADAM_BOARD_146
+    ESP_ERROR_CHECK(esp_lcd_new_panel_spd2010(io, &panel_cfg, &panel));
+#else
     ESP_ERROR_CHECK(esp_lcd_new_panel_st77916(io, &panel_cfg, &panel));
+#endif
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
-    pixels = heap_caps_malloc(WIDTH * STRIPE * 2, MALLOC_CAP_DMA);
+    pixels = heap_caps_malloc(PANEL_SIZE * STRIPE * 2, MALLOC_CAP_DMA);
     assert(pixels);
     gfx_init();
     space_init();
@@ -235,11 +280,13 @@ static bool color(const char *s, unsigned *result)
 }
 static void orient(void)
 {
+#if !CONFIG_ADAM_BOARD_146
     bool swap = rotation == 90 || rotation == 270;
     bool mx = (rotation == 90 || rotation == 180) ^ mirror_x;
     bool my = (rotation == 180 || rotation == 270) ^ mirror_y;
     ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel,swap));
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel,mx,my));
+#endif
     present();
 }
 static void command(char *line)
@@ -349,12 +396,12 @@ static void command(char *line)
     } else if (n==2 && !strcmp(args[0],"touch") && !strcmp(args[1],"off")) {
         touch_logging=false; printf("OK touch logging off\n");
     } else if (n==1 && strcmp(args[0],"status")==0) {
-        printf("OK status version=28 mode=%s size=360x360 last_fill=#%06X brightness=%u "
-               "rotation=%u mirror=%d,%d display=%d lcd_id=%02X%02X%02X%02X "
+        printf("OK status version=" ADAM_FIRMWARE_ID " board=" ADAM_BOARD_NAME " mode=%s size=360x360 last_fill=#%06X brightness=%u "
+               "physical_size=%dx%d rotation=%u mirror=%d,%d display=%d lcd_id=%02X%02X%02X%02X "
                "qspi_hz=40000000 frames=%lu fps=%.1f target_fps=%u render_us=%lu "
                "transfer_us=%lu psram_free=%u\n",
                ui_mode?ui_name():home_mode?"home":"canvas",current_rgb,
-               brightness,rotation,mirror_x,mirror_y,display_on,
+               brightness,PANEL_SIZE,PANEL_SIZE,rotation,mirror_x,mirror_y,display_on,
                panel_id[0],panel_id[1],panel_id[2],panel_id[3],
                (unsigned long)frame_count,actual_fps,target_fps,(unsigned long)render_us,
                (unsigned long)transfer_us,
@@ -456,7 +503,7 @@ void app_main(void)
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb_cfg));
     usb_serial_jtag_vfs_use_driver();
     setvbuf(stdout,NULL,_IONBF,0);
-    printf("Display UI v29: faster wake endpoint and upload, Waveshare 1.85C V2\n");
+    printf("Display UI " ADAM_FIRMWARE_ID ": " ADAM_BOARD_NAME "\n");
     preferences_init();
     init_display();
     headend_init();

@@ -1,4 +1,5 @@
 #include "audio_clocks.h"
+#include "board.h"
 #include <stdio.h>
 #include "driver/pulse_cnt.h"
 #include "esp_timer.h"
@@ -39,6 +40,13 @@ done:
 }
 void audio_clock_diagnostics(void)
 {
+#if CONFIG_ADAM_BOARD_146
+    double mic_bclk=0,mic_ws=0,speaker_bclk=0,speaker_ws=0;
+    esp_err_t a=frequency(15,&mic_bclk),b=frequency(2,&mic_ws);
+    esp_err_t c=frequency(48,&speaker_bclk),d=frequency(38,&speaker_ws);
+    printf("OK clocks mic_bclk_hz=%.0f mic_ws_hz=%.0f speaker_bclk_hz=%.0f speaker_ws_hz=%.0f errors=%s,%s,%s,%s\n",
+        mic_bclk,mic_ws,speaker_bclk,speaker_ws,esp_err_to_name(a),esp_err_to_name(b),esp_err_to_name(c),esp_err_to_name(d));
+#else
     double mclk=0,bclk=0,ws=0;
     esp_err_t a=frequency(2,&mclk),b=frequency(48,&bclk),c=frequency(38,&ws);
     printf("OK clocks mclk_hz=%.0f bclk_hz=%.0f ws_hz=%.0f errors=%s,%s,%s rx_channels=%lu tx_channels=%lu "
@@ -48,4 +56,5 @@ void audio_clock_diagnostics(void)
            (unsigned long)REG_GET_FIELD(I2S_TX_TDM_CTRL_REG(0),I2S_TX_TDM_TOT_CHAN_NUM)+1,
            (unsigned long)REG_READ(I2S_RX_TDM_CTRL_REG(0)),(unsigned long)REG_READ(I2S_TX_TDM_CTRL_REG(0)),
            (unsigned long)REG_READ(I2S_RX_CONF1_REG(0)),(unsigned long)REG_READ(I2S_TX_CONF1_REG(0)));
+#endif
 }

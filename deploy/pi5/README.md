@@ -176,6 +176,10 @@ idle home-ring status behavior.
 
 ## Verification
 
+Optional camera/gesture processing is deployed with `compose.camera.yaml` in
+addition to the files above. See [Cameras](../../docs/CAMERAS.md) for setup,
+resource limits, credential handling, and gesture-action configuration.
+
 - Check host readiness (board, thermal/throttling flags, free disk, Docker) with
   `python3 tools/check_pi_host.py`.
 - Smoke-test live speech synthesis and transcription inside the running service

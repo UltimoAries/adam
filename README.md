@@ -193,6 +193,8 @@ interface.
 - [Training archive & human review workflow](docs/TRAINING_ARCHIVE.md)
 
 ### Firmware, Hardware & Wake Word
+- [Waveshare 1.46-inch board target, build, and feature differences](docs/BOARD_146.md)
+- [RTSP cameras, gesture rules, and Home Assistant actions](docs/CAMERAS.md)
 - [Illustrated sky home screen & status ring](docs/SPACE_PANEL.md)
 - [Touch UI & Wi-Fi configuration](docs/TOUCH_UI.md)
 - [USB serial display, audio & diagnostic controls](docs/DISPLAY_CONTROLS.md)

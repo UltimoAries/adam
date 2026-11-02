@@ -8,6 +8,7 @@ retains the notices and terms supplied with that material.
 | --- | --- |
 | Waveshare board samples and ST77916 LCD driver | [Apache-2.0](vendor/LICENSE); [source tree](vendor/waveshare-tree.json) at commit `8ead4a96bf3a278fc4ebd8ef4768657e17fa2880` (with local QSPI modifications noted in source) |
 | Espressif ES7210 reference | Apache-2.0 SPDX header in [source](vendor/espressif/es7210-native.c) |
+| Espressif SPD2010 display driver from Waveshare | Apache-2.0 SPDX headers; [pinned provenance](vendor/waveshare-146/README.md) |
 | micro_wake_word embedded runner | [GPL-3.0](vendor/wake/micro_wake_word/LICENSE.md) |
 | optional-bare (`esphome/core/optional.h`) | MIT (Copyright 2017 Martin Moene; header in [source](vendor/wake/micro_wake_word/include/esphome/core/optional.h)) |
 | micro_speech_features (TensorFlow Micro frontend) | [Apache-2.0](vendor/wake/micro_speech_features/LICENSE) (Copyright TensorFlow Authors, individual headers retained) |
@@ -20,6 +21,12 @@ retains the notices and terms supplied with that material.
 | Basic English / Kristin voice (downloaded separately) | [Voice attribution and terms](headend/voice-licenses/basic-english.txt); [model manifest](headend/voice-models.json) |
 
 ## Additional notes
+
+- **Optional camera worker:** MediaPipe 0.10.18 and its Google-provided gesture
+  model are downloaded separately when building `deploy/pi5/Dockerfile.camera`.
+  MediaPipe is Apache-2.0; see its [upstream license](https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE).
+  Model source, version, and SHA-256 are documented in [Cameras](docs/CAMERAS.md).
+  PyAV, OpenCV, and other installed dependencies retain their upstream terms.
 
 - **Pre-trained wake-word weights:** The firmware embeds `firmware/main/wake_model.tflite`
   (duplicated in `training/hey_adam/export/hey_adam.tflite`), alongside a locally

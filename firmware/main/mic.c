@@ -3,6 +3,7 @@
 // Active analog/clock/pair-power sequence checked against the Apache-2.0
 // native Espressif driver preserved in vendor/espressif/es7210-native.c.
 #include "mic.h"
+#include "board.h"
 #include "audio.h"
 #include "headend.h"
 #include "wake.h"
@@ -26,10 +27,16 @@ static unsigned frames,target,read_errors,overflows,blocks,stack_min;
 static unsigned session_errors,session_overflows,peak[2],clipped[2],live[2];
 static uint64_t energy[2];
 static esp_err_t last_error;
+#if CONFIG_ADAM_BOARD_146
+static unsigned gain_db=12,clip_gain_db=12;
+static float digital_gain=4.0f;
+#else
 static unsigned gain_db=36,clip_gain_db=36;
+#endif
 static unsigned diagnostic_mask[2],diagnostic_zeros[2];
 static uint32_t diagnostic_words[8];
 
+#if !CONFIG_ADAM_BOARD_146
 static esp_err_t write_reg(uint8_t reg,uint8_t value)
 { uint8_t data[]={reg,value}; return i2c_master_transmit(adc,data,2,100); }
 static esp_err_t read_reg(uint8_t reg,uint8_t *value)
@@ -64,6 +71,7 @@ static esp_err_t setup_adc(void)
     return format==0x80 && clock==0xC1 && analog==0x43 && pair_power==0 && mode==0x10?
         ESP_OK:ESP_ERR_INVALID_RESPONSE;
 }
+#endif
 static bool overflow(i2s_chan_handle_t channel,i2s_event_data_t *event,void *context)
 {
     portENTER_CRITICAL_ISR(&lock);
@@ -90,7 +98,18 @@ static void capture_task(void *unused)
             headend_audio_gap();
             continue;
         }
+#if CONFIG_ADAM_BOARD_146
+        // The physical digital microphone occupies the right I2S slot. Duplicate
+        // it for existing stereo diagnostics; voice capture remains mono.
+        portENTER_CRITICAL(&lock); float scale=digital_gain; portEXIT_CRITICAL(&lock);
+        for (unsigned i=0;i<count;++i) {
+            float sample=(wire_samples[i*2+1]/65536.0f)*scale;
+            int16_t value=(int16_t)(sample>32767?32767:sample< -32768?-32768:sample);
+            samples[i*2]=samples[i*2+1]=value;
+        }
+#else
         for (unsigned i=0;i<count*CHANNELS;++i) samples[i]=(int16_t)(wire_samples[i]>>16);
+#endif
         headend_feed(samples,count);
         wake_feed(samples,count);
         uint64_t sum[2]={0}; unsigned maximum[2]={0},saturated[2]={0};
@@ -129,11 +148,14 @@ static void capture_task(void *unused)
 bool mic_init(i2c_master_bus_handle_t bus,i2s_chan_handle_t rx)
 {
     input=rx;
+    esp_err_t err=ESP_OK;
+#if !CONFIG_ADAM_BOARD_146
     const i2c_device_config_t device={.dev_addr_length=I2C_ADDR_BIT_LEN_7,
         .device_address=0x40,.scl_speed_hz=400000};
-    esp_err_t err=i2c_master_bus_add_device(bus,&device,&adc);
+    err=i2c_master_bus_add_device(bus,&device,&adc);
     if (err!=ESP_OK) goto fail;
     if ((err=setup_adc())!=ESP_OK) goto fail;
+#endif
     clip=heap_caps_malloc(RATE*MAX_MS/1000*CHANNELS*sizeof(int16_t),MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
     if (!clip) { err=ESP_ERR_NO_MEM; goto fail; }
     const i2s_event_callbacks_t callbacks={.on_recv_q_ovf=overflow};
@@ -168,6 +190,10 @@ bool mic_recording(void)
 bool mic_set_gain(unsigned db)
 {
     if (!ready || mic_recording() || db>36 || db%3) return false;
+#if CONFIG_ADAM_BOARD_146
+    float scale=powf(10.0f,db/20.0f);
+    portENTER_CRITICAL(&lock); digital_gain=scale; gain_db=db; portEXIT_CRITICAL(&lock);
+#else
     uint8_t value=0x10|(db==36?13:db/3);
     esp_err_t first=write_reg(0x43,value),second=write_reg(0x44,value);
     if (first!=ESP_OK || second!=ESP_OK) {
@@ -175,6 +201,7 @@ bool mic_set_gain(unsigned db)
         return false;
     }
     gain_db=db;
+#endif
     return true;
 }
 unsigned mic_gain_db(void) { return gain_db; }
@@ -229,10 +256,14 @@ void mic_diagnose(void)
     portEXIT_CRITICAL(&lock);
     printf("OK mic_diag phase_mask=%04X,%04X zeros_per_160=%u,%u raw_words=",masks[0],masks[1],zeros[0],zeros[1]);
     for (unsigned i=0;i<8;++i) printf("%s%08lX",i?",":"",(unsigned long)words[i]);
+#if !CONFIG_ADAM_BOARD_146
     const uint8_t registers[]={0x00,0x01,0x02,0x03,0x06,0x08,0x0B,0x11,0x12,0x40,0x43,0x44,0x4B,0x4C};
     for (unsigned i=0;i<sizeof(registers);++i) {
         uint8_t value;
         if (read_reg(registers[i],&value)==ESP_OK) printf(" reg%02X=%02X",registers[i],value);
     }
+#else
+    printf(" physical_channels=1 source=right gain=digital stereo=duplicated");
+#endif
     printf("\n");
 }

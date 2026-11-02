@@ -1,6 +1,7 @@
 // ES8311 register setup adapted from the Espressif Apache-2.0 driver preserved
 // in vendor/Arduino/examples/03_audio_out_no_tf/es8311.cpp (2015-2022 Espressif).
 #include "audio.h"
+#include "board.h"
 #include "mic.h"
 #include <math.h>
 #include <stdio.h>
@@ -14,6 +15,10 @@
 #include "freertos/queue.h"
 
 enum { RATE=16000, FRAMES=160, DMA_COUNT=6, AMP=15, TABLE_SIZE=1024, STARTUP_MS=250 };
+// Head-end pages peak at 12000/32768. The PCM5101 board needs more digital
+// drive than the ES8311 board: 2.5x puts normal pages at 30000, below full scale.
+// Keep the user volume curve and true mute; saturate unexpected louder input.
+static const float output_gain=CONFIG_ADAM_BOARD_146?2.5f:1.0f;
 typedef struct {
     unsigned hz,ms,id,clip_frames,channel,pcm_channels;
     bool chime,message;
@@ -38,7 +43,21 @@ extern const uint8_t listen_cue_start[] asm("_binary_listen_cue_pcm_start");
 extern const uint8_t listen_cue_end[] asm("_binary_listen_cue_pcm_end");
 
 static esp_err_t reg_write(uint8_t reg,uint8_t value)
-{ uint8_t data[]={reg,value}; return i2c_master_transmit(codec,data,2,100); }
+{
+#if CONFIG_ADAM_BOARD_146
+    // PCM5101 has no I2C registers. Zero samples provide digital mute.
+    return ESP_OK;
+#else
+    uint8_t data[]={reg,value}; return i2c_master_transmit(codec,data,2,100);
+#endif
+}
+static void amplifier(bool enabled)
+{
+#if !CONFIG_ADAM_BOARD_146
+    gpio_set_level(AMP,enabled);
+#endif
+}
+#if !CONFIG_ADAM_BOARD_146
 static esp_err_t reg_read(uint8_t reg,uint8_t *value)
 { return i2c_master_transmit_receive(codec,&reg,1,value,1,100); }
 static esp_err_t codec_setup(void)
@@ -62,6 +81,7 @@ static esp_err_t codec_setup(void)
     if ((err=reg_read(0x09,&format))!=ESP_OK || (err=reg_read(0x32,&gain))!=ESP_OK) return err;
     return format==0x10 && gain==0xBF?ESP_OK:ESP_ERR_INVALID_RESPONSE;
 }
+#endif
 static bool queue_overflow(i2s_chan_handle_t channel,i2s_event_data_t *event,void *context)
 {
     portENTER_CRITICAL_ISR(&lock);
@@ -116,7 +136,7 @@ static void audio_task(void *unused)
             portEXIT_CRITICAL(&lock);
             if (stop) { interrupted=true; break; }
             bool enable=level>0;
-            if (enable!=amp_on) { gpio_set_level(AMP,enable); amp_on=enable; }
+            if (enable!=amp_on) { amplifier(enable); amp_on=enable; }
             ok=write_block();
         }
         for (unsigned offset=0;offset<total && ok && !interrupted;offset+=FRAMES) {
@@ -124,7 +144,7 @@ static void audio_task(void *unused)
             int level=volume; bool stop=request.id!=generation;
             portEXIT_CRITICAL(&lock);
             bool enable=level>0;
-            if (enable!=amp_on) { gpio_set_level(AMP,enable); amp_on=enable; }
+            if (enable!=amp_on) { amplifier(enable); amp_on=enable; }
             unsigned hz=request.chime?(unsigned[]){523,659,784}[(offset/(RATE*4/10))%3]:request.hz;
             uint32_t step=((uint64_t)hz<<32)/RATE;
             float target=level*level/10000.0f;
@@ -139,7 +159,8 @@ static void audio_task(void *unused)
                 gain+=(target-gain)*0.005f;
                 float source=request.pcm?(pos<request.clip_frames?
                     request.pcm[pos*request.pcm_channels+request.channel]*request.pcm_gain:0):sine_table[phase>>22];
-                int16_t value=(int16_t)(source*gain*envelope);
+                float output=source*gain*envelope*output_gain;
+                int16_t value=(int16_t)(output>32767?32767:output< -32768?-32768:output);
                 phase+=step;
                 samples[i*2]=samples[i*2+1]=(int32_t)value*65536;
             }
@@ -150,7 +171,7 @@ static void audio_task(void *unused)
         portENTER_CRITICAL(&lock); feeding=false; portEXIT_CRITICAL(&lock);
         memset(samples,0,sizeof(samples));
         for (int i=0;i<DMA_COUNT+1 && ok;++i) ok=write_block();
-        gpio_set_level(AMP,0);
+        amplifier(false);
         esp_err_t mute_err=reg_write(0x31,0x60);
         unsigned stack=uxTaskGetStackHighWaterMark(NULL);
         portENTER_CRITICAL(&lock);
@@ -166,24 +187,46 @@ static void audio_task(void *unused)
 bool audio_init(i2c_master_bus_handle_t bus,int initial_volume)
 {
     volume=initial_volume;
-    gpio_set_level(AMP,0);
+    esp_err_t err=ESP_OK;
+    amplifier(false);
+#if !CONFIG_ADAM_BOARD_146
     const i2c_device_config_t cfg={.dev_addr_length=I2C_ADDR_BIT_LEN_7,.device_address=0x18,.scl_speed_hz=400000};
-    esp_err_t err=i2c_master_bus_add_device(bus,&cfg,&codec);
+    err=i2c_master_bus_add_device(bus,&cfg,&codec);
     if (err!=ESP_OK) goto fail;
     if ((err=reg_read(0xFD,&chip_hi))!=ESP_OK || (err=reg_read(0xFE,&chip_lo))!=ESP_OK) goto fail;
     if (chip_hi!=0x83 || chip_lo!=0x11) { err=ESP_ERR_INVALID_RESPONSE; goto fail; }
     if ((err=codec_setup())!=ESP_OK) goto fail;
+#endif
     i2s_chan_config_t channel=I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0,I2S_ROLE_MASTER);
     channel.dma_desc_num=DMA_COUNT; channel.dma_frame_num=FRAMES;
     channel.auto_clear_after_cb=true;
+#if CONFIG_ADAM_BOARD_146
+    if ((err=i2s_new_channel(&channel,&tx,NULL))!=ESP_OK) goto fail;
+    channel.id=I2S_NUM_1;
+    if ((err=i2s_new_channel(&channel,NULL,&rx))!=ESP_OK) goto fail;
+#else
     if ((err=i2s_new_channel(&channel,&tx,&rx))!=ESP_OK) goto fail;
+#endif
     const i2s_std_config_t standard={
         .clk_cfg=I2S_STD_CLK_DEFAULT_CONFIG(RATE),
         .slot_cfg=I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT,I2S_SLOT_MODE_STEREO),
-        .gpio_cfg={.mclk=2,.bclk=48,.ws=38,.dout=47,.din=39},
+        .gpio_cfg={
+#if CONFIG_ADAM_BOARD_146
+            .mclk=I2S_GPIO_UNUSED,.bclk=48,.ws=38,.dout=47,.din=I2S_GPIO_UNUSED
+#else
+            .mclk=2,.bclk=48,.ws=38,.dout=47,.din=39
+#endif
+        },
     };
     if ((err=i2s_channel_init_std_mode(tx,&standard))!=ESP_OK) goto fail;
+#if CONFIG_ADAM_BOARD_146
+    i2s_std_config_t capture=standard;
+    capture.gpio_cfg.bclk=15; capture.gpio_cfg.ws=2;
+    capture.gpio_cfg.dout=I2S_GPIO_UNUSED; capture.gpio_cfg.din=39;
+    if ((err=i2s_channel_init_std_mode(rx,&capture))!=ESP_OK) goto fail;
+#else
     if ((err=i2s_channel_init_std_mode(rx,&standard))!=ESP_OK) goto fail;
+#endif
     const i2s_event_callbacks_t callbacks={.on_send_q_ovf=queue_overflow};
     if ((err=i2s_channel_register_event_callback(tx,&callbacks,NULL))!=ESP_OK) goto fail;
     requests=xQueueCreate(1,sizeof(request_t));
@@ -207,11 +250,16 @@ fail:
 }
 bool audio_diagnostic_loopback(bool enable)
 {
+#if CONFIG_ADAM_BOARD_146
+    // Separate capture clocks: the shared-bus loopback diagnostic is inapplicable.
+    return false;
+#else
     if (!ready || mic_recording() || audio_clip_busy()) return false;
     int pin=enable?47:39;
     if (gpio_input_enable(pin)!=ESP_OK) return false;
     esp_rom_gpio_connect_in_signal(pin,i2s_periph_signal[0].data_in_sig,false);
     return true;
+#endif
 }
 void audio_set_volume(int value)
 {
@@ -275,7 +323,7 @@ void audio_status(void)
     esp_err_t err=last_error;
     portEXIT_CRITICAL(&lock);
     printf("OK audio ready=%d playing=%d volume=%d codec=%02X%02X rate=%d bits=32 slots=2 dma_bytes=%d "
-           "completed=%u blocks=%u write_errors=%u queue_overflows=%u stack_min=%u last_error=%s\n",
+           "completed=%u blocks=%u write_errors=%u queue_overflows=%u stack_min=%u last_error=%s output_gain=%.1f\n",
            ready,active,level,chip_hi,chip_lo,RATE,DMA_COUNT*FRAMES*8,
-           count,frames,errors,missed,stack,esp_err_to_name(err));
+           count,frames,errors,missed,stack,esp_err_to_name(err),(double)output_gain);
 }

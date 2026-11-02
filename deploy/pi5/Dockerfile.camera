@@ -1,0 +1,11 @@
+FROM python:3.12-slim-bookworm
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp \
+    OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 GLOG_minloglevel=2
+RUN apt-get update && apt-get install -y --no-install-recommends libglib2.0-0 libgl1 libportaudio2 \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir --only-binary=:all: mediapipe==0.10.18 numpy==1.26.4 opencv-contrib-python==4.10.0.84 av==14.0.1
+RUN mkdir /models && python -c "import urllib.request,hashlib; p='/models/gesture_recognizer.task'; urllib.request.urlretrieve('https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task',p); assert hashlib.sha256(open(p,'rb').read()).hexdigest()=='97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482'"
+WORKDIR /app
+COPY headend/camera_worker.py /app/camera_worker.py
+USER 1000:1000
+CMD ["python", "camera_worker.py"]

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include "board.h"
 
 enum { BG=0x030810, CARD=0x102535, EDGE=0x214458, WHITE=0xE9F4FA,
        MUTED=0x83A3B6, CYAN=0x40D9DC, GOLD=0xF4BC62 };
@@ -136,7 +137,7 @@ void ui_render(int64_t now)
             button(92,233,176,40,"STOP",GOLD);
         } else if (page==MICROPHONE) {
             centered(180,104,1,MUTED,!mic_ready()?"Microphone unavailable":mic_duration_ms()?"Clip ready in memory":"Ready to record");
-            for (unsigned ch=0;ch<2;++ch) {
+            for (unsigned ch=0;ch<(CONFIG_ADAM_BOARD_146?1:2);++ch) {
                 int y=128+ch*25;
                 gfx_text(77,y,1,MUTED,ch?"MIC2":"MIC1");
                 float db=20*log10f((mic_level(ch)+1)/32768.0f);

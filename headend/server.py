@@ -27,6 +27,7 @@ from .fleet import Fleet
 from .voices import VoiceService
 from .model_services import ModelServices, RoutedTranscriber, RoutedSpeech, add_model_routes
 from .processing import add_processing_routes
+from .cameras import CameraService, add_camera_routes
 
 ROOT = Path(__file__).resolve().parent
 
@@ -176,6 +177,11 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
     speech = speech or RoutedSpeech(services, voices)
     fleet = Fleet(state,store,jobs,bridge,f'http://{lan_ip or "127.0.0.1"}:8765',speech,voices,panel_updates=not testing)
     require_auth = not testing if auth_required is None else auth_required
+    def voice_busy():
+        return bool(jobs.active or fleet.active or any(
+            (e.get('reply') or {}).get('status') == 'working' and time.time()-e.get('started', 0) < 120
+            for e in list(fleet.sessions.values())))
+    cameras = CameraService(state, fleet.home_assistant, voice_busy)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -218,7 +224,8 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
                 return JSONResponse({'detail': 'Open the test UI from this local server.'}, status_code=403)
         path = request.url.path
         unit_route = re.fullmatch(r'/api/units/[a-f0-9]{16}/(?:poll|audio|pages/[a-f0-9]{32}/(?:audio|ack))',path)
-        public = path=='/api/health' or path.startswith('/api/auth/') or unit_route
+        worker_route = path == '/api/camera-worker/config' or re.fullmatch(r'/api/camera-worker/[a-f0-9]{16}/(?:observation|preview)', path)
+        public = path=='/api/health' or path.startswith('/api/auth/') or unit_route or worker_route
         if require_auth and path.startswith('/api/') and not public and not state.authenticated(request.cookies.get('voice_session')):
             return JSONResponse({'detail':'Sign in to the head-end.'},status_code=401)
         response = await call_next(request)
@@ -356,8 +363,13 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
     def model_settings():
         return FileResponse(ROOT/'web'/'dist'/'models.html')
 
+    @app.get('/cameras')
+    def camera_page():
+        return FileResponse(ROOT/'web'/'dist'/'cameras.html')
+
     add_model_routes(app,services)
     add_processing_routes(app,services,fleet.conversation)
+    add_camera_routes(app,cameras)
     app.include_router(fleet.router)
     app.mount('/assets', StaticFiles(directory=ROOT / 'web' / 'dist'), name='assets')
     return app

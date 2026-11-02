@@ -10,7 +10,7 @@ import tarfile
 
 ROOT=Path(__file__).resolve().parents[1]
 SCOPE=['.dockerignore','LICENSE','THIRD_PARTY_NOTICES.md','headend','deploy/pi5','deploy/model-host','docs/VOICE_PACKAGES.md','docs/CONVERSATION.md','docs/SPACE_PANEL.md','docs/HEADEND_NETWORK.md',
-       'tools/fetch_stt_model.py','tools/fetch_voice_model.py',
+       'docs/CAMERAS.md','tools/fetch_stt_model.py','tools/fetch_voice_model.py',
        'tools/migrate_headend.py','tools/package_voice.py',
        'tools/check_pi_host.py','tools/check_pi_runtime.py','tools/check_live_speech.py',
        'tools/check_conversation_runtime.py','tools/check_speech_routing.py',

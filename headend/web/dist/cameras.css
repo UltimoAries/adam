@@ -1,0 +1,9 @@
+.camera-grid,.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px}
+.camera-card,.gesture-rule{border:1px solid #344c59;border-radius:16px;padding:20px;min-width:0;background:#0d1921}
+.camera-card img{width:100%;aspect-ratio:16/9;object-fit:contain;background:#081016;border-radius:10px;margin:12px 0}
+.camera-card h3{margin:0 0 6px}.camera-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.gesture-rule{margin:16px 0}.gesture-rule .settings-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr))}
+label{margin:12px 0}input,select{width:100%;min-width:0}.check{display:flex;gap:10px;align-items:center}.check input{width:auto}
+details{margin:24px 0}#saveCamera{margin-top:10px}.help{overflow-wrap:anywhere}.rule-value{display:flex;gap:8px}.rule-value input{min-width:0}
+.event-row{padding:10px 0;border-bottom:1px solid #263d49}.camera-card .badge{display:inline-block}button:disabled{opacity:.55;cursor:wait}
+.event-snapshot{display:block;width:100%;max-width:640px;height:auto;border-radius:10px;margin-top:14px}.event-row p{overflow-wrap:anywhere}.event-row details{margin:12px 0}.event-row .camera-actions{align-items:center}

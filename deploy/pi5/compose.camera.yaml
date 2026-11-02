@@ -1,0 +1,26 @@
+services:
+  camera:
+    build:
+      context: ../..
+      dockerfile: deploy/pi5/Dockerfile.camera
+    platform: linux/arm64
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    user: "${ADAM_UID:-1000}:${ADAM_GID:-1000}"
+    depends_on:
+      adam:
+        condition: service_healthy
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 96
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    volumes:
+      - ../../headend/data/camera-worker.token:/data/camera-worker.token:ro
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: {max-size: 5m, max-file: "2"}

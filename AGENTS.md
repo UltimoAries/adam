@@ -8,10 +8,12 @@ This document gives AI coding agents and developers an end-to-end architectural 
 
 ADAM is a local-first voice assistant, intercom, and smart-home controller built from three cooperating tiers on a private LAN:
 
-1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, currently Firmware `v29`):**
+1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, firmware targets `v30-185` and `v30-146`):**
    - **Target hardware:** **Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2** (`16 MB` flash, `8 MB` octal PSRAM, `360×360` round ST77916 QSPI LCD, CST816 capacitive touch, ES7210 dual-mic ADC, ES8311 DAC/amp).
    - **Physical orientation:** Operate with the **USB-C port pointing down**. On the rear/side enclosure buttons, the **upper button is `BOOT` (`GPIO0`)** and the **lower button is hardware `RESET`**.
    - **On-device responsibilities:** Continuous 16 kHz stereo capture over a shared full-duplex I2S bus, local on-device **Hey Adam** wake-word detection (`hey_adam-20261030-c60f0456` via `micro_wake_word` + TFLite Micro), 2-second rolling pre-roll ring buffer, quiet 120 ms trigger cue, chunked silence-ended HTTP audio upload, mono PCM page playback, local monotonic countdown timer bars, touch UI, and the animated sky/weather/LLM-ring home screen.
+
+   - **Additional target:** The non-suffixed **Waveshare ESP32-S3-Touch-LCD-1.46** uses a 412×412 SPD2010 display/touch controller, PCM5101 speaker output, and one digital microphone on a separate I2S bus. Build with `tools/idf146.ps1` into `firmware/build146`; see [docs/BOARD_146.md](docs/BOARD_146.md). Never cross-flash the targets: GPIO15 is an amplifier enable on the 1.85C V2 and a microphone clock on the 1.46. The physical volume knob limits output independently of the touchscreen volume.
 
 2. **Head-End Server (`headend/` — Python 3.12 + FastAPI on port `8765`):**
    - Runs either natively (`python -m headend.server --lan`) or headless in Docker on a **Raspberry Pi 5** (`deploy/pi5/`).
@@ -80,6 +82,7 @@ Wake transcripts route through five deterministic stages before touching the LLM
 | `headend/conversation.py` | GPU/Pi Ollama streaming chat client, `<think>` stripping, background 5s model-readiness probe for the LCD ring |
 | `headend/model_services.py` | Remote Speaches STT offload with automatic local `faster-whisper` fallback |
 | `headend/processing.py`, `model_catalog.py` | Combined GPU/Pi settings, shared cooldown, and read-only installed model discovery |
+| `headend/cameras.py`, `camera_worker.py` | Private RTSP registry, optional CPU-limited MediaPipe sidecar, sustained gesture gates, and bounded Home Assistant action rules; see `docs/CAMERAS.md` |
 | `headend/recording_work.py`, `latency.py` | Bounded asynchronous recording persistence and per-session latency measurements |
 | `headend/voices.py` | Verified Piper `.tar.gz` voice package registry and persistent warm ONNX synthesis workers |
 | `headend/training_archive.py` | Bounded WAV/transcript/wake-boundary archive and human review store |
@@ -114,7 +117,7 @@ Because this repository is public, **no private LAN IPs, hostnames, tokens, or S
 Use the Python 3.12 virtualenv in `headend/.venv`:
 
 ```powershell
-# Full head-end unit & integration suite (160 tests; uses FastAPI TestClient)
+# Full head-end unit & integration suite (uses FastAPI TestClient)
 .\headend\.venv\Scripts\python.exe -m unittest discover -s headend -t . -q
 
 # GPU model-host controller tests

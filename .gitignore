@@ -1,5 +1,8 @@
 # Build outputs and installed dependencies (recreated from source/lock files)
 /firmware/build/
+/firmware/build146/
+/firmware/sdkconfig.146
+/firmware/sdkconfig.146.old
 /firmware/sdkconfig
 /firmware/sdkconfig.old
 /firmware/managed_components/

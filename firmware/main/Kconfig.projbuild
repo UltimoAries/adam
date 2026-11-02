@@ -1,3 +1,12 @@
+menu "ADAM hardware"
+    config ADAM_BOARD_146
+        bool "Waveshare ESP32-S3-Touch-LCD-1.46 (SPD2010 / PCM5101 / digital microphone)"
+        default n
+        help
+            Leave disabled for the original 1.85C BOX V2. These boards use
+            different audio wiring and display/touch controllers.
+endmenu
+
 menu "ADAM voice capture"
     config ADAM_ENDPOINT_SILENCE_MS
         int "Quiet time before ending a wake command (milliseconds)"

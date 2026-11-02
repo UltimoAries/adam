@@ -1,6 +1,7 @@
 // LAN protocol v1: authenticated control polling, ordered 20-ms PCM upload,
 // and acknowledged mono PCM paging. No network work runs in the mic task.
 #include "headend.h"
+#include "board.h"
 #include "audio.h"
 #include "mic.h"
 #include "preferences.h"
@@ -433,7 +434,7 @@ static void task(void *unused)
             }
             portEXIT_CRITICAL(&guard);
             char path[340];
-            snprintf(path,sizeof(path),"poll?firmware=v29&wake_model=%s&busy=%d%s%s",wake_model_id(),
+            snprintf(path,sizeof(path),"poll?firmware=" ADAM_FIRMWARE_ID "&wake_model=%s&busy=%d%s%s",wake_model_id(),
                      headend_busy() || mic_recording() || audio_is_playing() || audio_clip_busy(),
                      dismissed[0]?"&dismissed=":"",dismissed);
             bool ok=request(&cfg,path,NULL,poll_response,sizeof(poll_response));
