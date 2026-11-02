@@ -56,6 +56,8 @@ Wake transcripts route through five deterministic stages before touching the LLM
    - Handles read-only multi-entity summaries (`summary_intent`: `doors`, `windows`, `openings`, `locks`, `lights`, `leaks`).
    - Executes bounded service calls (`controls()` / `action_payload()`) with state readback confirmation and durable `(unit_id, session_id)` replay protection.
    - Supports up to four explicitly named actions in one utterance, validating the complete plan before sending commands and rejecting conflicting or ambiguous targets.
+   - In `heat_cool` mode, thermostat commands must specify `heating_temperature` or `cooling_temperature`; generic targets ask for clarification. Only the named setpoint changes. A conflict with the per-entity `temperature_gap` is rejected without moving the opposite bound. Both bounds are sent in one request without changing mode and confirmed by readback; see `docs/HOME_ASSISTANT.md`.
+     `temperature_gap=0` (the default) disables ADAM's extra minimum gap; never infer a minimum from the current range width. Heating must remain at or below cooling, and device-side restrictions may still apply.
 5. **Fallback City Temperature → Conversational LLM (`headend/queries.py` → `headend/conversation.py`):**
    - Ambiguous temperature questions unmatched in Home Assistant (*"What's the temperature in Seattle?"*) fall back to Open-Meteo; everything else routes to `ConversationService` (`adam:latest` on GPU → `qwen3.5:0.8b` on Pi, stripped of `<think>` tags and capped to speakable length).
 
@@ -73,6 +75,7 @@ Wake transcripts route through five deterministic stages before touching the LLM
 | Directory / File | Responsibility |
 | --- | --- |
 | `headend/server.py` | FastAPI app factory, TrustedHost/Origin CSRF middleware, `/api/health`, `/bench` clip routes, static UI routes |
+| `headend/system_monitor.py` | Five-second cached host CPU/memory and data-drive usage for the Monitor Map; authenticated `/api/system/resources` |
 | `headend/fleet.py` | Auth/setup/login, unit pairing, `/poll`, `/audio` streaming receiver, `/api/pages/*`, 5-stage `transcription_done` router |
 | `headend/state.py` | SQLite schema & thread-safe helpers for `units`, `users`, `logins`, and `pages` |
 | `headend/timers.py` | Spoken/numeric duration parser, SQLite `timers` persistence, `/poll` reconciliation, `/api/timers` routes |

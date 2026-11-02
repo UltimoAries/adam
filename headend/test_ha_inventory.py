@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 import httpx
 from . import test_fleet
-from .home_assistant import HomeAssistantClient, HomeAssistantService, HomeAssistantSettings
+from .home_assistant import HomeAssistantClient, HomeAssistantService, HomeAssistantSettings, HomeAssistantUnavailable
 
 
 class InventoryTests(unittest.TestCase):
@@ -34,6 +34,10 @@ class InventoryTests(unittest.TestCase):
                 body = json.loads(request.content); self.actions.append((request.url.path, body))
                 row = next(r for r in self.rows if r['entity_id']==body['entity_id'])
                 action = request.url.path.rsplit('/',1)[1]
+                if action == 'set_temperature':
+                    row['attributes'].update({k:v for k,v in body.items() if k != 'entity_id'})
+                if action == 'set_hvac_mode':
+                    row['state'] = body['hvac_mode']
                 row['state'] = {'turn_on':'on', 'turn_off':'off', 'open_cover':'open', 'close_cover':'closed', 'lock':'locked', 'unlock':'unlocked'}.get(action,row['state'])
                 return httpx.Response(200,json=[])
             raise AssertionError(request.url.path)
@@ -194,6 +198,81 @@ class InventoryTests(unittest.TestCase):
         self.command('Set option of Preset to two')
         self.assertEqual(self.actions[-1][1]['option'],'two')
         self.assertEqual(self.act('select.preset','option','three').status_code,400)
+
+    def test_natural_thermostat_uses_live_setpoints_and_keeps_auto_mode(self):
+        thermostat = self.rows[3]
+        thermostat['attributes'].update(current_temperature=64, target_temp_low=66, target_temp_high=72)
+        self.refresh()
+        # Inventory is deliberately stale; use live setpoints, ignoring room temperature.
+        thermostat['attributes']['current_temperature'] = 67
+        thermostat['attributes'].update(target_temp_low=70, target_temp_high=76)
+        result = self.command('Hey Adam, set the heat to 65 degrees')
+        self.assertEqual(result['status'], 'answered', result)
+        self.assertIn('heat at 65 and cool at 76', result['text'])
+        self.assertEqual(self.actions, [('/api/services/climate/set_temperature',
+            dict(entity_id='climate.house', target_temp_low=65, target_temp_high=76))])
+        self.assertEqual(thermostat['state'], 'heat_cool')
+
+    def test_temperature_gap_survives_refresh_restart_and_unrelated_device_edits(self):
+        thermostat = self.rows[3]
+        thermostat['attributes'].update(current_temperature=80, target_temp_low=66, target_temp_high=72)
+        self.assertEqual(self.refresh()['climate.house']['temperature_gap'], 0)
+        self.save('climate.house', temperature_gap=6)
+        self.assertEqual(self.refresh()['climate.house']['temperature_gap'], 6)
+        self.command('Set the cooling to 78')
+        self.assertEqual(self.actions[-1][1]['target_temp_low'], 66)
+        self.assertEqual(self.refresh()['climate.house']['temperature_gap'], 6)
+        self.save('climate.house', name='Thermostat')  # Older clients omit the new preference.
+        restored = HomeAssistantService(self.app.state.auth, None, HomeAssistantClient(self.service.client.transport))
+        try:
+            result = restored.answer('Set cooling of thermostat to 72 degrees', restored.settings())
+            self.assertEqual(result['status'], 'answered', result)
+            self.assertEqual(self.actions[-1][1], dict(entity_id='climate.house', target_temp_low=66, target_temp_high=72))
+        finally:
+            restored.close()
+        self.save('climate.house', temperature_gap=4)
+        self.assertEqual(self.refresh()['climate.house']['temperature_gap'], 4)
+        self.save('climate.house', temperature_gap=None)
+        self.assertEqual(self.refresh()['climate.house']['temperature_gap'], 0)
+        self.command('Set the heat to 71')
+        self.assertEqual(self.actions[-1][1], dict(entity_id='climate.house', target_temp_low=71, target_temp_high=72))
+        self.save('climate.house', temperature_gap=0)
+        self.assertEqual(self.refresh()['climate.house']['temperature_gap'], 0)
+
+    def test_thermostat_unconfirmed_readback_does_not_repeat_command(self):
+        thermostat = self.rows[3]
+        thermostat['attributes'].update(current_temperature=64, target_temp_low=66, target_temp_high=72)
+        self.refresh()
+        with patch.object(self.service.client, 'device_state', side_effect=[
+                dict(thermostat, attributes=dict(thermostat['attributes'])), HomeAssistantUnavailable('Unavailable')]):
+            result = self.command('Set the heat to 65 degrees')
+        self.assertEqual(result['status'], 'unconfirmed')
+        self.assertEqual(len(self.actions), 1)
+
+    def test_auto_target_bounds_missing_state_and_negative_gap_send_nothing(self):
+        thermostat = self.rows[3]
+        thermostat['attributes'].update(current_temperature=80, target_temp_low=66, target_temp_high=72)
+        self.refresh()
+        self.assertEqual(self.command('Set cooling of thermostat to 46 degrees')['status'], 'unsupported')
+        del thermostat['attributes']['target_temp_low']
+        self.assertEqual(self.command('Set thermostat to 65 degrees')['status'], 'unsupported')
+        self.assertEqual(self.client.patch('/api/home-assistant/inventory/climate.house',json={'temperature_gap':-1}).status_code, 422)
+        self.assertEqual(self.actions, [])
+
+    def test_generic_auto_target_and_ambiguous_shorthand_send_nothing(self):
+        self.rows[3]['attributes'].update(target_temp_low=70, target_temp_high=76)
+        self.refresh()
+        result = self.command('Set thermostat to 73 degrees')
+        self.assertEqual(result['status'], 'unsupported')
+        self.assertIn('Say set the heat', result['text'])
+        self.assertEqual(self.actions, [])
+        self.rows.append(dict(entity_id='climate.upstairs',state='heat_cool',
+                              attributes=dict(self.rows[3]['attributes'], friendly_name='Upstairs')))
+        self.refresh()
+        self.assertEqual(self.command('Set heating to 65 degrees')['status'], 'ambiguous')
+        self.assertEqual(self.actions, [])
+        self.assertEqual(self.command('Set thermostat heating to 65 degrees')['status'], 'answered')
+        self.assertEqual(self.actions[-1][1], dict(entity_id='climate.house', target_temp_low=65, target_temp_high=76))
 
     def test_disabling_or_renaming_during_lookup_prevents_action(self):
         original=self.service.client.device_state

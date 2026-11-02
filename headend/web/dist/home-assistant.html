@@ -33,5 +33,6 @@
 <label>Adam name<input id="deviceName" maxlength="80" placeholder="Use Home Assistant name"></label><p id="defaultName" class="help"></p>
 <label>Spoken aliases<input id="deviceAliases" maxlength="647" placeholder="Lounge, front room"></label><p class="help">Separate aliases with commas. Names change only in Adam.</p>
 <label class="toggle"><input id="useDefaultName" type="checkbox">Also recognize the Home Assistant name</label><label class="toggle"><input id="deviceEnabled" type="checkbox">Enable commands for this device</label>
+<div id="thermostatOptions" hidden><label>Minimum heating/cooling gap (optional)<input id="temperatureGap" type="number" min="0" max="100" step="any" placeholder="0 — no minimum gap"></label><p class="help">In Home Assistant's temperature units. Zero or blank removes ADAM's minimum gap; heating still cannot exceed cooling. The thermostat may enforce its own limits. Say “set the heat to 65” or “set the cooling to 71” to change only that setpoint. ADAM never moves the other limit automatically.</p></div>
 <p id="deviceError" class="help" role="alert"></p><div class="dialog-actions"><button id="saveDevice" type="submit" class="primary">Save device</button><button id="removeDevice" type="button" class="quiet">Remove from Adam</button></div></form></dialog>
 </body></html>

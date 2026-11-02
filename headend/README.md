@@ -7,6 +7,11 @@ archive.
 
 - **Dashboard & fleet management (`/`)**: Pair units over USB, monitor online
   status, review incoming audio sessions, and send typed or recorded pages.
+  The Monitor Map includes host CPU/memory and ADAM data-drive usage; authenticated
+  `/api/system/resources` readings are cached for five seconds. CPU is averaged
+  across host cores between samples; memory excludes reclaimable Linux cache.
+  Storage covers the filesystem holding `headend/data`, not every attached drive.
+  Linux and Windows hosts are supported; unavailable metrics show as unavailable.
 - **Model services (`/models`)**: One GPU/Pi preference and installed-model
   dropdowns select speech recognition (Speaches / faster-whisper) and general
   conversation (Ollama) on one GPU computer. Both routes share a failure cooldown
@@ -39,6 +44,9 @@ Docker deployment.
 
 - `server.py`: FastAPI application, security headers, health endpoint, static UI
   routes, and background service lifecycle.
+- `system_monitor.py`: Cached host CPU/memory counters and data-filesystem capacity
+  without external commands or blocking sampling. In the Pi Docker deployment,
+  CPU/memory describe the host, not just the ADAM container or GPU computer.
 - `fleet.py`, `state.py`, `reconnect_unit.py`: Administrator sessions, SQLite
   account/unit persistence, authenticated device polling/streaming, five-minute
   page expiry, playback acknowledgements, and credential-rotating USB reconnects.

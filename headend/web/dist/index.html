@@ -4,6 +4,7 @@
 <title>ADAM · Automation Display and Mapping</title>
 <link rel="stylesheet" href="/assets/fleet.css"><script src="/assets/fleet.js" defer></script>
 <link rel="stylesheet" href="/assets/monitor-map.css">
+<script src="/assets/system-monitor.js" defer></script>
 <script type="importmap">{"imports":{"three":"/assets/vendor/three/three.module.js"}}</script>
 <script type="module" src="/assets/monitor-map.js"></script>
 </head><body><main>
@@ -15,6 +16,15 @@
 <p id="trainingWarning" class="help" role="status" hidden></p>
 <section class="panel monitor-map" aria-labelledby="mapTitle">
   <div class="section-title"><div><span class="eyebrow">A VIEW OF YOUR HOME</span><h2 id="mapTitle">Monitor Map</h2></div><span class="badge">Sample floor plan</span></div>
+  <section class="system-monitor" aria-label="Head-end resources">
+    <div class="resource-heading"><strong>Head-end resources</strong><span id="resourceStatus">Waiting for readings</span></div>
+    <div class="resource-grid">
+      <div class="resource-card"><div><span>CPU</span><strong id="resourceCpu">—</strong></div><progress id="resourceCpuBar" max="100" value="0" aria-label="Host CPU usage" hidden></progress><small>Across all host CPU cores</small></div>
+      <div class="resource-card"><div><span>Memory</span><strong id="resourceMemory">—</strong></div><progress id="resourceMemoryBar" max="100" value="0" aria-label="Host memory usage" hidden></progress><small id="resourceMemoryDetail">Host physical memory</small></div>
+      <div class="resource-card"><div><span>Storage</span><strong id="resourceStorage">—</strong></div><progress id="resourceStorageBar" max="100" value="0" aria-label="Data drive usage" hidden></progress><small id="resourceStorageDetail">Drive containing ADAM data</small></div>
+    </div>
+    <p class="resource-scope">Head-end computer · refreshes every 5 seconds · storage is the drive containing ADAM data</p>
+  </section>
   <p class="help">Explore a sample home. Your house model and room devices will live here.</p>
   <div class="map-toolbar" role="group" aria-label="Map controls">
     <div class="map-modes"><button id="mapOrbit" aria-pressed="true" disabled>Orbit &amp; tilt</button><button id="mapPan" aria-pressed="false" disabled>Pan</button></div>

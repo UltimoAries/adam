@@ -1,6 +1,7 @@
 """Persistent Home Assistant inventory with local names and bounded controls."""
 from concurrent.futures import ThreadPoolExecutor
 import json
+import math
 import re
 import threading
 import time
@@ -70,6 +71,7 @@ class DeviceSettings(BaseModel):
     imported: bool = True
     enabled: bool = True
     use_default_name: bool = True
+    temperature_gap: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
 
     @field_validator('name')
     @classmethod
@@ -178,6 +180,7 @@ class HomeAssistantClient:
         if action == 'status':
             return dict(result, status='answered', text=format_entity_state(entity_id, name, current, attrs))
         attrs['_state'] = current
+        attrs['_temperature_gap'] = device.get('temperature_gap')
         if action == 'level':
             action = {'light': 'brightness', 'fan': 'speed', 'cover': 'position', 'climate': 'temperature',
                       'media_player': 'volume', 'number': 'value', 'input_number': 'value'}.get(entity_id.split('.')[0], 'level')
@@ -189,6 +192,29 @@ class HomeAssistantClient:
             return dict(result, status='ignored', text='The command expired or settings changed. No command was sent.')
         domain = entity_id.split('.')[0]
         self.request(settings, 'POST', f"/api/services/{domain}/{control['service']}", body)
+        if domain == 'climate' and control['service'] == 'set_temperature':
+            targets = {k:v for k,v in body.items() if k in ('temperature', 'target_temp_low', 'target_temp_high')}
+            def confirmed(readback):
+                return readback['state'] == state['state'] and all(
+                    isinstance(readback['attributes'].get(k), (int, float))
+                    and not isinstance(readback['attributes'][k], bool)
+                    and math.isclose(readback['attributes'][k], v, rel_tol=0, abs_tol=.05)
+                    for k,v in targets.items())
+            try:
+                after = self.device_state(settings, entity_id)
+                for delay in (.2, .4, .8):
+                    if confirmed(after): break
+                    time.sleep(delay)
+                    after = self.device_state(settings, entity_id)
+                if confirmed(after):
+                    if 'temperature' in targets:
+                        text = f"{name} target is {targets['temperature']:g} degrees."
+                    else:
+                        text = f"{name} is set to heat at {targets['target_temp_low']:g} and cool at {targets['target_temp_high']:g} degrees."
+                    return dict(result, state=after['state'], status='answered', text=text, targets=targets)
+            except HomeAssistantUnavailable:
+                pass
+            return dict(result, status='unconfirmed', text=f'I sent the temperature settings for {name}, but could not confirm them.', targets=targets)
         if not expected:
             try: current = self.device_state(settings, entity_id)['state']
             except HomeAssistantUnavailable: pass
@@ -428,6 +454,7 @@ class HomeAssistantService:
                 'media_player': 'volume', 'number': 'value', 'input_number': 'value',
             }.get(entity_id.split('.')[0], 'level')
         attrs = dict(row.get('attributes') or {})
+        attrs['_temperature_gap'] = row.get('temperature_gap')
         if row.get('state'):
             attrs.setdefault('_state', row['state'])
         action_payload(entity_id, attrs, resolved, value)

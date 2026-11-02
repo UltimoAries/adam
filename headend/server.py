@@ -28,6 +28,7 @@ from .voices import VoiceService
 from .model_services import ModelServices, RoutedTranscriber, RoutedSpeech, add_model_routes
 from .processing import add_processing_routes
 from .cameras import CameraService, add_camera_routes
+from .system_monitor import SystemMonitor
 
 ROOT = Path(__file__).resolve().parent
 
@@ -182,6 +183,7 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
             (e.get('reply') or {}).get('status') == 'working' and time.time()-e.get('started', 0) < 120
             for e in list(fleet.sessions.values())))
     cameras = CameraService(state, fleet.home_assistant, voice_busy)
+    monitor = SystemMonitor(state.directory)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -244,6 +246,10 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
     @app.exception_handler(DeviceError)
     async def device_error(request, exc):
         return JSONResponse({'detail': str(exc)}, status_code=503)
+
+    @app.get('/api/system/resources')
+    def system_resources():
+        return monitor.snapshot()
 
     @app.get('/api/health')
     def health():

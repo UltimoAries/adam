@@ -33,6 +33,9 @@ speaker/microphone unit and a Python head-end.
   temperature in the bedroom?"*, *"Are any doors or windows open?"*), and run
   spoken commands with confirmations, including up to four explicitly named
   actions in one utterance.
+  Independent thermostat commands such as "set the heat to 65" and "set the
+  cooling to 71" change only the named setpoint. Automatic-mode requests must
+  specify heating or cooling, and gap conflicts leave both limits unchanged.
 - **Time, world clock, calendar & weather answers (`/queries`):** Spoken local
   time and date per speaker timezone, world clock lookups (*"What time is it in
   Tokyo?"*), calendar date math (*"How many days until Christmas?"*), and
@@ -40,6 +43,8 @@ speaker/microphone unit and a Python head-end.
 - **Multi-unit paging & dashboard (`/`):** Pair speaker units over USB, send
   typed or browser-recorded voice announcements with five-minute expiry and
   playback acknowledgements, and explore the **Monitor Map** 3D floor-plan preview.
+  CPU, physical memory, and data-drive usage appear above the map, refreshing
+  every five seconds while the signed-in dashboard is visible.
 - **Durable training archive (`/training`):** Optional bounded archive of
   original device recordings, transcripts, wake-phrase boundary markers, and
   human review labels for future wake-word/speech tuning.

@@ -15,6 +15,8 @@ class HomeAssistantInventory:
                 touched INTEGER NOT NULL DEFAULT 0,
                 present INTEGER NOT NULL DEFAULT 1, updated REAL NOT NULL DEFAULT 0,
                 data TEXT NOT NULL, PRIMARY KEY(origin,entity_id))''')
+            if 'temperature_gap' not in {r['name'] for r in db.execute('PRAGMA table_info(home_assistant_inventory)')}:
+                db.execute('ALTER TABLE home_assistant_inventory ADD COLUMN temperature_gap REAL')
 
     def legacy(self, settings):
         if not settings.entity_id: return
@@ -31,11 +33,14 @@ class HomeAssistantInventory:
             db.execute('UPDATE home_assistant_inventory SET present=0 WHERE origin=?', (settings.url,))
             for row in rows:
                 imported = settings.auto_import and default_import(row['entity_id'], row['attributes'])
+                # Existing range width is a comfort preference, not a device minimum.
+                gap = 0 if row['entity_id'].startswith('climate.') else None
                 db.execute('''INSERT INTO home_assistant_inventory
-                    (origin,entity_id,imported,present,updated,data) VALUES(?,?,?,1,?,?)
+                    (origin,entity_id,imported,present,updated,data,temperature_gap) VALUES(?,?,?,1,?,?,?)
                     ON CONFLICT(origin,entity_id) DO UPDATE SET present=1,updated=excluded.updated,data=excluded.data,
+                    temperature_gap=COALESCE(home_assistant_inventory.temperature_gap,excluded.temperature_gap),
                     imported=CASE WHEN touched=0 AND excluded.imported=1 THEN 1 ELSE imported END''',
-                    (settings.url, row['entity_id'], int(imported), time.time(), json.dumps(row)))
+                    (settings.url, row['entity_id'], int(imported), time.time(), json.dumps(row), gap))
 
     def rows(self, settings):
         with self.state.db() as db:
@@ -47,7 +52,8 @@ class HomeAssistantInventory:
             row.update(default_name=row['name'], name=record['name'] or row['name'], custom_name=record['name'],
                        aliases=json.loads(record['aliases']), use_default_name=bool(record['use_default_name']),
                        imported=bool(record['imported']), enabled=bool(record['enabled']),
-                       present=bool(record['present']), updated=record['updated'])
+                       present=bool(record['present']), updated=record['updated'],
+                       temperature_gap=(record['temperature_gap'] or 0) if row['entity_id'].startswith('climate.') else None)
             row['spoken_names'] = list(dict.fromkeys([row['name']]+row['aliases']+([row['default_name']] if row['use_default_name'] else [])))
             row['suggested'] = default_import(row['entity_id'], row['attributes'])
             row['domain'] = row['entity_id'].split('.')[0]
@@ -61,6 +67,11 @@ class HomeAssistantInventory:
 
     def save(self, settings, entity_id, options):
         with self.state.db() as db:
+            if 'temperature_gap' in options.model_fields_set:
+                if not entity_id.startswith('climate.') and options.temperature_gap is not None:
+                    raise ValueError('An automatic temperature gap only applies to thermostats.')
+                db.execute('UPDATE home_assistant_inventory SET temperature_gap=? WHERE origin=? AND entity_id=?',
+                           (options.temperature_gap, settings.url, entity_id))
             count = db.execute('''UPDATE home_assistant_inventory
                 SET name=?,aliases=?,use_default_name=?,imported=?,enabled=?,touched=1 WHERE origin=? AND entity_id=?''',
                 (options.name, json.dumps(options.aliases), int(options.use_default_name), int(options.imported),

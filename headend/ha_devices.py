@@ -101,9 +101,12 @@ def controls(entity_id, attrs):
             add('lock', 'Lock', 'lock', expected='locked')
             add('unlock', 'Unlock', 'unlock', expected='unlocked')
     elif domain == 'climate':
-        if features & 1:
+        if features & 3:
             add('temperature', 'Target temperature', 'set_temperature', 'temperature', kind='number',
                 min=a.get('min_temp', 7), max=a.get('max_temp', 35), step=a.get('target_temp_step', .5))
+            for key, label in [('heating_temperature', 'Heating target'), ('cooling_temperature', 'Cooling target')]:
+                add(key, label, 'set_temperature', 'temperature', kind='number',
+                    min=a.get('min_temp', 7), max=a.get('max_temp', 35), step=a.get('target_temp_step', .5))
         if features & 2:
             add('temperature_range', 'Low / high temperature', 'set_temperature', kind='range',
                 min=a.get('min_temp', 7), max=a.get('max_temp', 35), step=a.get('target_temp_step', .5))
@@ -460,6 +463,14 @@ def intent(text, name, entity_id='', attrs=None):
     numeric_raw = re.sub(r'[^\w.\-]+', ' ', name.casefold()).strip()
     numeric_target = _target_pattern(numeric_raw, entity_id=entity_id, numeric=True)
     number = r'(-?\d+(?:\.\d+)?)'
+    if entity_id.startswith('climate.'):
+        side = r'(heat|heating|cool|cooling)(?: setpoint| target| temperature)?'
+        for pattern in (r'set '+numeric_target+r' '+side+r' to '+number+r'(?: degrees)?',
+                        r'set (?:the )?'+side+r' (?:of|on|for) '+numeric_target+r' to '+number+r'(?: degrees)?',
+                        r'set (?:the )?'+side+r' to '+number+r'(?: degrees)?'):
+            match = re.fullmatch(pattern, clean)
+            if match:
+                return ('heating_temperature' if match[1].startswith('heat') else 'cooling_temperature'), float(match[2])
     match = re.fullmatch(r'set '+numeric_target+r' to '+number+r' degrees', clean)
     if match: return 'temperature', float(match[1])
     for key, prefix in [('level', r'set '), ('brightness', r'dim '), ('brightness', r'set (?:the )?brightness of '), ('speed', r'set (?:the )?speed of '),
@@ -493,8 +504,40 @@ def action_payload(entity_id, attrs, action, value):
             if values[0] > values[1]: raise ValueError('Low temperature must not exceed high temperature.')
             body.update(target_temp_low=values[0], target_temp_high=values[1])
         else:
-            if action == 'temperature' and attrs.get('hvac_mode', attrs.get('_state')) == 'heat_cool':
-                raise ValueError('This thermostat is in heat/cool mode. Set its low and high temperature range.')
+            temperature_action = action in ('temperature', 'heating_temperature', 'cooling_temperature')
+            mode = attrs.get('hvac_mode', attrs.get('_state'))
+            if temperature_action and mode == 'heat_cool':
+                if action == 'temperature':
+                    raise ValueError('The thermostat is in automatic mode. Say set the heat to a temperature, or set the cooling to a temperature. No settings were changed.')
+                if not int(attrs.get('supported_features', 0)) & 2:
+                    raise ValueError('This thermostat does not report automatic temperature range support.')
+                low, high = (attrs.get(key) for key in ('target_temp_low', 'target_temp_high'))
+                numbers = (low, high)
+                if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in numbers) or low > high:
+                    raise ValueError('I need the current heating/cooling limits. Refresh the thermostat or set an explicit range.')
+                gap = attrs.get('_temperature_gap')
+                if gap is None:
+                    gap = 0
+                if isinstance(gap, bool) or not isinstance(gap, (int, float)) or not math.isfinite(gap) or gap < 0:
+                    raise ValueError('Set a nonnegative temperature gap in Manage device. Zero disables the minimum gap.')
+                heating = action == 'heating_temperature'
+                if heating:
+                    low = value
+                else:
+                    high = value
+                if low > high:
+                    raise ValueError('Heating cannot exceed cooling. Change the other setpoint first. No settings were changed.')
+                if round(high-low, 6) < round(gap, 6):
+                    limit = high-gap if heating else low+gap
+                    raise ValueError(f'To keep the {gap:g} degree gap, set {"heating at or below" if heating else "cooling at or above"} {limit:g} degrees, or change the other setpoint first. No settings were changed.')
+                if not control['min'] <= low <= high <= control['max']:
+                    raise ValueError('That target cannot keep the saved heating/cooling gap within this thermostat\'s limits. Choose another target or adjust the gap.')
+                body.update(target_temp_low=low, target_temp_high=high)
+                return control, body
+            if action in ('heating_temperature', 'cooling_temperature') and mode != ('heat' if action == 'heating_temperature' else 'cool'):
+                raise ValueError('Choose the thermostat\'s heating or cooling mode first, or use automatic heat/cool mode. No mode was changed.')
+            if temperature_action and entity_id.startswith('climate.') and not int(attrs.get('supported_features', 0)) & 1:
+                raise ValueError('This thermostat only accepts a temperature range in its current mode.')
             if action in ('brightness', 'speed', 'position', 'color_temperature') and value != int(value):
                 raise ValueError('Use a whole number for this control.')
             body[control['field']] = value/100 if action == 'volume' else value

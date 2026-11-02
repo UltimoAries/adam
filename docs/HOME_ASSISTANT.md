@@ -75,8 +75,40 @@ capabilities remain visible while lights are off.
 
 This does not expose arbitrary HA services, camera streams, PIN entry, alarms,
 or every custom integration action. Unsupported entries remain visible as
-read-only. Thermostat values use HA's configured temperature unit. In heat/cool
-mode use the low/high range rather than a single temperature.
+read-only. Thermostat values use HA's configured temperature unit.
+
+### Independent thermostat targets
+
+Say **"Set the heat to 65"** or **"Set the cooling to 71"** when exactly one
+enabled imported thermostat matches. With multiple thermostats, name the device:
+**"Set thermostat heating to 65 degrees"** or **"Set cooling of the upstairs
+thermostat to 71 degrees"**. These commands change only the named setpoint and
+never switch HVAC mode. Room temperature does not choose a target.
+
+In automatic `heat_cool` mode, a generic **"Set the thermostat to 65 degrees"**
+asks you to specify heating or cooling without changing anything. In heat-only
+or cool-only mode, that generic command still sets the single temperature.
+The device card offers separate **Heating target** and **Cooling target** controls;
+the generic target input is hidden in automatic mode.
+
+Automatic mode stays enabled and the opposite limit stays unchanged. ADAM has
+no minimum gap by default, and does not infer one from the current range width.
+Heating cannot exceed cooling; equal limits may be sent, but the thermostat or
+Home Assistant integration may enforce its own minimum separation.
+
+An optional extra gap is available under **Manage device → Minimum heating/cooling
+gap**. Zero or blank disables ADAM's minimum. A saved nonzero preference persists
+through refreshes and restarts. Requests violating it explain the allowed limit
+without moving either setpoint. Explicit low/high range commands remain available.
+
+For example, with heating at 70° and cooling at 76°,
+"set the heat to 65" yields heating at 65° and cooling still at 76°. Then
+"set the cooling to 71" yields 65° / 71°. These values do not create a six-degree
+minimum for subsequent commands.
+ADAM sends both limits in one service call, without changing HVAC mode, and
+reports the resulting targets only after readback confirms them. Failed calls
+are never retried. Missing range data or a target that cannot preserve the
+gap within the reported device limits produces an explanation without a command.
 
 The separate [Cameras page](CAMERAS.md) accepts RTSP connections directly; it
 does not import HA camera streams. Gesture rules use this same bounded device
