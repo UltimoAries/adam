@@ -6,9 +6,9 @@ This document gives AI coding agents and developers an end-to-end architectural 
 
 ## 1. System Topology
 
-ADAM is a local-first voice assistant, paging system, and smart-home controller built from three cooperating tiers on a private LAN. Live two-way calling and SIP are not implemented.
+ADAM is a local-first voice assistant, paging system, and smart-home controller built from three cooperating tiers on a private LAN. Experimental full-duplex drop-in is implemented in `headend/intercom.py` and `firmware/main/intercom.c`; see [Intercom](docs/INTERCOM.md). SIP is not implemented.
 
-1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, firmware targets `v30-185` and `v30-146`; installed units may run older builds):**
+1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, firmware targets `v31-185` and `v31-146`; installed units may run older builds):**
    - **Target hardware:** **Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2** (`16 MB` flash, `8 MB` octal PSRAM, `360×360` round ST77916 QSPI LCD, CST816 capacitive touch, ES7210 dual-mic ADC, ES8311 DAC/amp).
    - **Physical orientation:** Operate with the **USB-C port pointing down**. On the rear/side enclosure buttons, the **upper button is `BOOT` (`GPIO0`)** and the **lower button is hardware `RESET`**.
    - **On-device responsibilities:** Continuous 16 kHz stereo capture over a shared full-duplex I2S bus, local on-device **Hey Adam** wake-word detection (`hey_adam-20261030-c60f0456` via `micro_wake_word` + TFLite Micro), 2-second rolling pre-roll ring buffer, quiet 120 ms trigger cue, chunked silence-ended HTTP audio upload, mono PCM page playback, local monotonic countdown timer bars, touch UI, and the animated sky/weather/LLM-ring home screen.
@@ -41,7 +41,15 @@ ADAM is a local-first voice assistant, paging system, and smart-home controller 
 ### B. Utterance Dispatch Order (`headend/fleet.py` → `Fleet.transcription_done`)
 Only **completed wake sessions** (`entry['trigger'] == 'wake'` and `job['status'] == 'done'`) trigger automatic actions or spoken replies. Touch captures, remote Listen sessions, `/bench` uploads, and training-archive retranscriptions are diagnostic-only and **never** auto-dispatch.
 
-Wake transcripts route through five deterministic stages before touching the LLM:
+Explicit commands from the signed-in home page use `POST /api/commands/text`
+(`headend/text_commands.py`) and the same `Fleet.dispatch_command` handlers.
+They use an internal `text` trigger, which device audio uploads cannot supply.
+Replies default to browser text, with optional speaker playback. Request IDs
+persist for replay protection; see [Text commands](docs/TEXT_COMMANDS.md).
+
+Explicit intercom commands are handled first by `Intercom.submit`: exact unique speaker names, opt-in destination permission, online/capability/busy checks, and durable session replay protection. During an active call the on-device wake word hangs up instead of creating a transcript. Live PCM never enters STT or the archive.
+
+Other wake transcripts route through five deterministic stages before touching the LLM:
 
 1. **Countdown Timers (`headend/timers.py` — `TimerService.submit`):**
    - Handles creating, extending, checking, stopping, and cancelling named timers (`5s`–`24h`, up to `8` concurrent per speaker).

@@ -5,6 +5,8 @@
 <link rel="stylesheet" href="/assets/fleet.css"><script src="/assets/fleet.js" defer></script>
 <link rel="stylesheet" href="/assets/monitor-map.css">
 <script src="/assets/system-monitor.js" defer></script>
+<script src="/assets/intercom.js" defer></script>
+<script src="/assets/commands.js" defer></script>
 <script type="importmap">{"imports":{"three":"/assets/vendor/three/three.module.js"}}</script>
 <script type="module" src="/assets/monitor-map.js"></script>
 </head><body><main>
@@ -12,6 +14,7 @@
 <div id="notice" role="status" aria-live="polite" hidden></div>
 <section id="auth" class="panel auth" hidden><span class="eyebrow">LOCAL HEAD-END</span><h2 id="authTitle">Sign in</h2><p id="authHelp">Use your local administrator account.</p><form id="loginForm"><label>Username<input id="username" autocomplete="username" required maxlength="40" value="admin"></label><label>Password<input id="password" type="password" autocomplete="current-password" required maxlength="128"></label><button id="login" class="primary" type="submit">Sign in</button></form></section>
 <div id="dashboard" hidden>
+
 <nav aria-label="Camera features" style="margin-bottom:20px"><a href="/cameras">Cameras &amp; gesture actions &#8599;</a></nav>
 <p id="trainingWarning" class="help" role="status" hidden></p>
 <section class="panel monitor-map" aria-labelledby="mapTitle">
@@ -37,7 +40,27 @@
   <div class="map-foot"><p id="mapHelp">Drag to orbit and tilt. Right-drag to pan. Scroll to zoom. Touch: one finger to orbit, two to pan or zoom.</p><span>Preview &middot; no devices placed</span></div>
   <details class="map-keyboard"><summary>Keyboard controls</summary><p>Focus the map with Tab. Arrow keys pan; Shift + arrows orbit and tilt. + / &minus; zoom, T shows the top view, and R resets the view.</p></details>
 </section>
+<section class="panel command-panel" aria-labelledby="commandTitle">
+  <div class="section-title"><div><span class="eyebrow">ASK OR CONTROL YOUR HOME</span><h2 id="commandTitle">Type to ADAM</h2></div></div>
+  <form id="commandForm">
+    <label for="commandText">What would you like to do?</label>
+    <textarea id="commandText" rows="2" maxlength="500" required placeholder="Turn on the kitchen lights, or set the heat to 65 degrees"></textarea>
+    <div class="command-options"><label>Speaker context<select id="commandUnit"><option value="">No speaker — reply here</option></select></label><label class="command-speak"><input id="commandSpeak" type="checkbox"> Also speak the reply</label><button id="commandSend" class="primary" type="submit">Send command</button></div>
+  </form>
+  <p class="help">No “Hey Adam” needed. Replies appear here. Choose a speaker for timers, local time/weather, or calls. Calls connect speakers; they do not use your phone’s microphone.</p>
+  <p id="commandStatus" role="status" aria-live="polite"></p>
+  <button id="commandRetry" class="secondary" hidden>Check / retry safely</button>
+  <div id="commandReplies" class="history" aria-live="polite" aria-label="Command replies"></div>
+</section>
 <div class="overview"><div><strong id="onlineCount">0</strong><span>units online</span></div><div><strong id="pendingCount">0</strong><span>pages pending</span></div><div><strong id="sessionCount">0</strong><span>audio sessions</span></div><p>Speech runs on your headend or a configured model service, with local fallback.</p></div>
+<section class="panel" aria-labelledby="intercomTitle">
+  <div class="section-title"><div><span class="eyebrow">ROOM TO ROOM</span><h2 id="intercomTitle">Intercom</h2></div><span class="badge">Live conversation</span></div>
+  <p class="help">Say “Hey Adam, call Office ADAM” using a speaker’s exact name. Enabled destinations connect automatically with a chime. Both people can speak. Call audio is not recorded.</p>
+  <form id="callForm" class="record-tools"><label>From<select id="callFrom" required></select></label><label>To<select id="callTo" required></select></label><button id="callStart" class="primary">Drop in</button></form>
+  <p class="help">During a call, say “Hey Adam” to hang up, or use End call on either screen. Calls end after 10 minutes or 90 seconds of silence.</p>
+  <details><summary>Allow incoming drop-in</summary><div id="callPermissions"></div><p class="help">Disabled by default. Turning this off also ends any current call involving that speaker.</p></details>
+  <div id="calls" class="history" role="status" aria-live="polite"></div>
+</section>
 <div class="layout"><aside>
 <section class="panel units"><div class="section-title"><h2>Rooms & units</h2><button id="selectAll" class="quiet">Select online</button></div><p class="help">Choose where your message should play.</p><div id="units" class="unit-list"></div>
 <details><summary>Add a USB-connected unit</summary><form id="pairForm"><label>Unit name<input id="unitName" value="Round box" maxlength="48" required></label><label>Head-end LAN address<input id="pairUrl" placeholder="http://192.168.1.10:8765" required></label><button class="secondary" type="submit">Pair over USB</button><p class="help">Saves the device key and server address over USB. Its saved Wi-Fi network stays in use.</p></form></details></section>

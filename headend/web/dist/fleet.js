@@ -19,7 +19,7 @@ async function auth(){
   $('authHelp').textContent=setup?(state.setup_local?'Choose an administrator password of at least 12 characters. It stays on this headend.':'Create the first account through a local connection or SSH tunnel to http://127.0.0.1:8765.'):'Sign in to send pages and review incoming speech.';
   $('password').minLength=setup?12:1;$('password').autocomplete=setup?'new-password':'current-password';$('login').textContent=setup?'Create account':'Sign in';
   $('login').disabled=setup&&!state.setup_local;
-  if(signedIn){await refresh();await refreshVoices();}else $('connection').textContent='Local head-end';
+  if(signedIn){await refresh();await refreshVoices();}else { $('connection').textContent='Local head-end';window.clearCommands?.(); }
 }
 async function refreshVoices(){
   if(!signedIn)return;
@@ -114,7 +114,7 @@ function histories(){
 }
 async function refresh(){
   if(!signedIn||polling)return;polling=true;
-  try{fleet=await api('/api/fleet');const archive=fleet.training_archive;const warning=archive?(!archive.ready?'Training archive is unavailable. Voice processing continues.':!archive.settings.enabled?'Training collection is paused.':archive.warning||(archive.full?'Training archive limit reached. Voice processing continues.':'')):'';$('trainingWarning').textContent=warning;$('trainingWarning').hidden=!warning;$('connection').textContent='Head-end online';$('connection').className='badge online';$('onlineCount').textContent=fleet.units.filter(u=>u.online).length;$('pendingCount').textContent=fleet.pages.filter(p=>['queued','offered','playing'].includes(p.state)).length;$('sessionCount').textContent=fleet.sessions.length;$('serverUrl').textContent=fleet.url;if(!$('pairUrl').value)$('pairUrl').value=fleet.url;units();timers();histories();selection();}
+  try{fleet=await api('/api/fleet');const archive=fleet.training_archive;const warning=archive?(!archive.ready?'Training archive is unavailable. Voice processing continues.':!archive.settings.enabled?'Training collection is paused.':archive.warning||(archive.full?'Training archive limit reached. Voice processing continues.':'')):'';$('trainingWarning').textContent=warning;$('trainingWarning').hidden=!warning;$('connection').textContent='Head-end online';$('connection').className='badge online';$('onlineCount').textContent=fleet.units.filter(u=>u.online).length;$('pendingCount').textContent=fleet.pages.filter(p=>['queued','offered','playing'].includes(p.state)).length;$('sessionCount').textContent=fleet.sessions.length;$('serverUrl').textContent=fleet.url;if(!$('pairUrl').value)$('pairUrl').value=fleet.url;units();timers();histories();selection();window.renderIntercom?.(fleet.intercom);window.renderCommands?.(fleet.units);}
   finally{polling=false;}
 }
 function tab(value){mode=value;$('textCompose').hidden=mode!=='text';$('voiceCompose').hidden=mode!=='voice';for(const name of ['text','voice']){$(name+'Tab').classList.toggle('active',mode===name);$(name+'Tab').setAttribute('aria-pressed',String(mode===name));}selection();}

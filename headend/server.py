@@ -181,7 +181,7 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
     def voice_busy():
         return bool(jobs.active or fleet.active or any(
             (e.get('reply') or {}).get('status') == 'working' and time.time()-e.get('started', 0) < 120
-            for e in list(fleet.sessions.values())))
+            for e in list(fleet.sessions.values()) + list(fleet.text_commands.entries.values())))
     cameras = CameraService(state, fleet.home_assistant, voice_busy)
     monitor = SystemMonitor(state.directory)
 
@@ -196,6 +196,7 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
                     logging.getLogger(__name__).exception('Voice warmup failed; requests may retry')
             await asyncio.gather(asyncio.to_thread(jobs.preload),asyncio.to_thread(warm_voice))
         yield
+        fleet.intercom.close()
         await asyncio.to_thread(jobs.pool.shutdown,wait=True,cancel_futures=False)
         await asyncio.to_thread(fleet.recordings.close)
         fleet.home_assistant.close(); fleet.timers.close()
@@ -399,4 +400,4 @@ if __name__ == '__main__':
     if lan_ip:
         print(f'Device LAN endpoint: http://{lan_ip}:8765',flush=True)
     uvicorn.run(create_app(lan_ip=lan_ip), host='0.0.0.0' if lan_ip else '127.0.0.1',port=8765,
-                access_log=False,limit_concurrency=32,timeout_keep_alive=5)
+                access_log=False,limit_concurrency=32,timeout_keep_alive=5,ws_max_size=1024,ws_max_queue=4)

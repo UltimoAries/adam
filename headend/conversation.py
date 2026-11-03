@@ -1,4 +1,5 @@
 """Short spoken answers: preferred LAN Ollama, with a bounded local Pi fallback."""
+from .command_reply import command_reply
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -235,7 +236,7 @@ class ConversationService:
 
     def submit(self, entry, job):
         with self.lock:
-            if (self.closed or not self.options.enabled or entry['trigger'] != 'wake' or
+            if (self.closed or not self.options.enabled or entry['trigger'] not in ('wake', 'text') or
                     job['status'] != 'done' or entry.get('conversation_submitted')):
                 return
             entry['conversation_submitted'] = True
@@ -266,7 +267,7 @@ class ConversationService:
             with self.lock:
                 valid = not self.closed and self.options.enabled and generation == self.generation
             if valid:
-                entry['reply'] = self.deliver(result, entry['unit_id']) if result['text'] else result
+                entry['reply'] = command_reply(entry, result, self.deliver) if result['text'] else result
                 mark(entry, 'reply_ready')
             else:
                 entry['reply'] = dict(status='ignored', text='', error='Conversation settings changed')

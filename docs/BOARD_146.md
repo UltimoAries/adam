@@ -1,7 +1,7 @@
 # Waveshare ESP32-S3-Touch-LCD-1.46
 
-ADAM's separate `v30-146` firmware target supports the non-suffixed 1.46-inch
-board. The original 1.85C BOX V2 remains the default build target (`v30-185`).
+ADAM's separate `v31-146` firmware target supports the non-suffixed 1.46-inch
+board. The original 1.85C BOX V2 remains the default build target (`v31-185`).
 Do not flash either target onto the other hardware: GPIO15 is an amplifier
 enable on the 1.85C V2 but a microphone clock on the 1.46.
 
@@ -94,3 +94,17 @@ targets were rebuilt after the audio change; only the 1.46 board was flashed.
 After the audio diagnostics, one wake-buffer overflow was recorded, with no
 increase on the follow-up check; wake processing remained active. Audio and
 microphone I/O had no errors, and the pre-roll self-test passed while idle.
+
+## Intercom
+
+The v31 target includes experimental full-duplex drop-in with on-device echo
+cancellation. In the mixed-board pilot, speech from this board to the 1.85 was
+usable, but speech arriving from the 1.85 remained too quiet. Ordinary spoken
+messages were louder. Treat this as a practically one-way proof of concept;
+the underlying cause is unresolved, not a confirmed hardware restriction.
+Further tuning is deferred in favor of validating two 1.85 units.
+
+This board has separate capture/playback I2S clocks. If testing resumes, resolve
+the receive level and test sustained calls and overlapping speech before
+treating acoustic performance as stable.
+See [Intercom](INTERCOM.md) for setup and validation.

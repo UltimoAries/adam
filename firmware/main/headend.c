@@ -8,6 +8,7 @@
 #include "space.h"
 #include "wake.h"
 #include "preroll.h"
+#include "intercom.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -242,7 +243,7 @@ static bool request(const config_t *cfg,const char *path,const char *body,char *
 bool headend_listening(void)
 { portENTER_CRITICAL(&guard); bool value=buffer.capturing; portEXIT_CRITICAL(&guard); return value; }
 bool headend_busy(void)
-{ portENTER_CRITICAL(&guard); bool value=requested || uploading || buffer.session || paging; portEXIT_CRITICAL(&guard); return value; }
+{ portENTER_CRITICAL(&guard); bool value=requested || uploading || buffer.session || paging; portEXIT_CRITICAL(&guard); return value || intercom_active(); }
 const char *headend_state(void)
 {
     static const char *names[]={"UNPAIRED","OFFLINE","READY","STARTING","LISTENING","PROCESSING","PAGING","ERROR"};
@@ -251,6 +252,7 @@ const char *headend_state(void)
 }
 bool headend_start(const char *model)
 {
+    if (intercom_active()) { if (model) intercom_end();return model!=NULL; }
     if (!storage || !worker || !wifi_ready() || mic_recording() || audio_is_playing() || audio_clip_busy()) return false;
     if (model && !safe_id(model,96,false)) return false;
     portENTER_CRITICAL(&guard);
@@ -266,6 +268,7 @@ bool headend_start(const char *model)
 }
 void headend_stop(void)
 {
+    if (intercom_active()) intercom_end();
     portENTER_CRITICAL(&guard);
     bool stop_audio=paging || uploading || requested;
     cancelled=true;requested=false;voice_buffer_end(&buffer);
@@ -278,13 +281,14 @@ void headend_feed(const int16_t *stereo,unsigned frames)
     if (!storage || frames!=VOICE_BLOCK_SAMPLES) return;
     voice_block_t block;
     for (unsigned i=0;i<VOICE_BLOCK_SAMPLES;++i) block.pcm[i]=stereo[i*2];
-    bool cache=!audio_is_playing() && !audio_clip_busy() && !mic_recording();
+    bool cache=!intercom_active() && !audio_is_playing() && !audio_clip_busy() && !mic_recording();
     portENTER_CRITICAL(&guard);
     voice_buffer_feed(&buffer,block.pcm,cache);
     portEXIT_CRITICAL(&guard);
 }
 void headend_audio_gap(void)
 {
+    if (intercom_active()) intercom_end();
     if (!storage) return;
     portENTER_CRITICAL(&guard);
     ++input_gaps;voice_buffer_gap(&buffer);
@@ -433,8 +437,8 @@ static void task(void *unused)
                 pos+=(size_t)w;
             }
             portEXIT_CRITICAL(&guard);
-            char path[340];
-            snprintf(path,sizeof(path),"poll?firmware=" ADAM_FIRMWARE_ID "&wake_model=%s&busy=%d%s%s",wake_model_id(),
+            char path[440];
+            snprintf(path,sizeof(path),"poll?firmware=" ADAM_FIRMWARE_ID "&intercom=1&wake_model=%s&busy=%d%s%s",wake_model_id(),
                      headend_busy() || mic_recording() || audio_is_playing() || audio_clip_busy(),
                      dismissed[0]?"&dismissed=":"",dismissed);
             bool ok=request(&cfg,path,NULL,poll_response,sizeof(poll_response));
@@ -444,6 +448,19 @@ static void task(void *unused)
                 update_panel(root);
                 const cJSON *type=cJSON_GetObjectItemCaseSensitive(root,"type");
                 if (cJSON_IsString(type) && !strcmp(type->valuestring,"listen")) headend_start(NULL);
+                else if (cJSON_IsString(type) && !strcmp(type->valuestring,"call") && !headend_busy() && !mic_recording()) {
+                    const cJSON *id=cJSON_GetObjectItemCaseSensitive(root,"id"),*peer=cJSON_GetObjectItemCaseSensitive(root,"peer_name");
+                    if (cJSON_IsString(id) && cJSON_IsString(peer)) {
+                        portENTER_CRITICAL(&guard);
+                        bool reserve=!requested && !uploading && !buffer.session && !paging;
+                        if (reserve) paging=true;
+                        portEXIT_CRITICAL(&guard);
+                        if (reserve) {
+                            intercom_start(cfg.url,cfg.unit,cfg.token,id->valuestring,peer->valuestring);
+                            portENTER_CRITICAL(&guard);paging=false;portEXIT_CRITICAL(&guard);
+                        }
+                    }
+                }
                 else if (cJSON_IsString(type) && !strcmp(type->valuestring,"page")) {
                     const cJSON *id=cJSON_GetObjectItemCaseSensitive(root,"id"),*bytes=cJSON_GetObjectItemCaseSensitive(root,"bytes");
                     if (cJSON_IsString(id) && cJSON_IsNumber(bytes) && bytes->valuedouble>0 && bytes->valuedouble<=480000) {
@@ -471,6 +488,7 @@ static void task(void *unused)
 }
 void headend_init(void)
 {
+    intercom_init();
     nvs_handle_t handle;
     if (nvs_open("headend",NVS_READONLY,&handle)==ESP_OK) {
         size_t url=sizeof(configuration.url),unit=sizeof(configuration.unit),token=sizeof(configuration.token);
@@ -509,6 +527,7 @@ bool headend_configure(const char *url,const char *unit_id,const char *token)
 }
 void headend_status(void)
 {
+    intercom_status();
     portENTER_CRITICAL(&guard);
     unsigned bytes=sent,errors=failures,done=completed,pages=pages_done,stack=stack_min,cancel_count=aborted;
     bool paired=configured,active=buffer.capturing,bad=buffer.failed;
@@ -528,6 +547,7 @@ void headend_status(void)
 }
 void headend_timer_tick(int64_t now)
 {
+    if (intercom_active()) return;
     if (!space_timer_ringing(now)) {
         next_timer_chime_us=0;
         return;

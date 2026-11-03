@@ -1,4 +1,5 @@
 """Small, explicit information handlers. No remote speech, LLM, or device actions."""
+from .command_reply import command_reply
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 import json
@@ -478,9 +479,9 @@ class QueryService:
                     synthesis_ms=round((time.monotonic()-started)*1000))
 
     def submit(self, entry, job):
-        # Only new, successful wake sessions generate automatic answers. Bench
-        # retranscriptions and remote Listen checks never cause surprise replies.
-        if self.closed or job['status']!='done' or entry['trigger']!='wake':
+        # Only wake sessions and explicit authenticated text commands get answers.
+        # Bench retranscriptions and remote Listen checks never dispatch.
+        if self.closed or job['status']!='done' or entry['trigger'] not in ('wake', 'text'):
             return False
         is_time = bool(time_date_intent(job['text']))
         is_weather = bool(self.settings().enabled and weather_intent(job['text']))
@@ -508,7 +509,7 @@ class QueryService:
             result['lookup_ms']=round((time.monotonic()-started)*1000)
             mark(entry, 'answer_ready')
             if not self.closed and result.get('text') and (is_time or self.settings().enabled):
-                entry['reply'] = self.deliver(result, entry['unit_id'])
+                entry['reply'] = command_reply(entry, result, self.deliver)
                 mark(entry, 'reply_ready')
             else:
                 entry['reply'] = result

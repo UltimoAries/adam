@@ -6,6 +6,19 @@ speaker/microphone unit and a Python head-end.
 
 ## Features
 
+- **Type to ADAM:** A phone-friendly command box below the Monitor Map on the signed-in
+  home page runs the same commands as voice, without a wake word. Replies appear
+  on the page; optionally speak them through a selected unit. Supports Home
+  Assistant controls, timers, information queries, and speaker-to-speaker calls.
+  See [Text commands](docs/TEXT_COMMANDS.md).
+
+- **Experimental live intercom:** Opt-in automatic drop-in between speakers,
+  named voice calls, simultaneous two-way audio with on-device echo cancellation,
+  and voice/touch/dashboard hangup. Normal calls are not recorded. Both units need
+  v31 firmware. The mixed 1.85/1.46 pilot has usable audio in only one direction;
+  validation with two 1.85 units is still pending. See
+  [Intercom](docs/INTERCOM.md).
+
 - **Illustrated round-display home screen & countdown timers:**
   Live local clock and cached weather over an animated day/night sky with rain,
   drizzle, and snow particles, green listening mist, blue playback mist, stacked
@@ -58,7 +71,8 @@ speaker/microphone unit and a Python head-end.
 > loads and handles live commands reliably; formal held-out false-accept /
 > false-reject benchmarking remains in progress (see [docs/HEY_ADAM_PILOT.md](docs/HEY_ADAM_PILOT.md)).
 > Custom 3D house-model import and map device placement are planned future work.
-> Paging is message-based; live two-way calling and SIP are not implemented.
+> Paging remains message-based. Live intercom is experimental and requires v31
+> firmware on both speakers; SIP is not implemented.
 > All speech inference runs on your LAN; Open-Meteo weather lookups and one-time
 > dependency/model downloads require internet access.
 
@@ -66,7 +80,7 @@ speaker/microphone unit and a Python head-end.
 
 ## Hardware Target & Setup Notes
 
-Current source firmware targets are **`v30-185`** and **`v30-146`**. Check the
+Current source firmware targets are **`v31-185`** and **`v31-146`**. Check the
 dashboard or `status` over USB for the version actually installed on each unit;
 updating the head-end does not flash speakers.
 
@@ -162,12 +176,12 @@ back to standard Windows installations (`%USERPROFILE%\.espressif` or
 `C:\Espressif\esp-idf`):
 
 ```powershell
-# Original 1.85C BOX V2 (v30-185):
+# Original 1.85C BOX V2 (v31-185):
 .\tools\idf.ps1 -DIDF_TARGET=esp32s3 build
 # Replace COM6 with your unit's serial port:
 .\tools\idf.ps1 -p COM6 flash
 
-# Non-suffixed 1.46 only (v30-146), using its own USB port:
+# Non-suffixed 1.46 only (v31-146), using its own USB port:
 .\tools\idf146.ps1 build
 .\tools\idf146.ps1 -p <new-board-port> flash
 ```

@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "intercom.h"
 #include "graphics.h"
 #include "space.h"
 #include "esp_timer.h"
@@ -113,6 +114,16 @@ void ui_status(void)
 }
 void ui_render(int64_t now)
 {
+    if (intercom_active()) {
+        gfx_clear(BG);rails(now);
+        centered(180,88,2,CYAN,"INTERCOM");
+        char peer[25];intercom_peer(peer,sizeof(peer));
+        centered(180,137,1,WHITE,peer);
+        centered(180,170,1,MUTED,intercom_connected()?"LIVE - BOTH CAN SPEAK":"Connecting...");
+        centered(180,195,1,MUTED,"Say HEY ADAM to hang up");
+        button(92,235,176,42,"END CALL",GOLD);
+        return;
+    }
     if (page==HOME) {
         // Keep the listening session green through its short acknowledgement cue.
         space_state_t activity=(headend_listening() || mic_recording())?SPACE_LISTENING:
@@ -249,6 +260,11 @@ void ui_touch(const touch_event_t *event,int64_t now)
     if (!event->pressed || (last_press && now-last_press<90000)) return;
     last_press=now; ++tap_count;
     int x=event->x,y=event->y;
+    if (intercom_active()) {
+        if (inside(x,y,92,235,176,42)) intercom_end();
+        else if (x<76 && y>=85 && y<=275) preference_levels(preference_volume()+(y<180?10:-10),preference_brightness());
+        return;
+    }
     if (page==HOME) {
         if (space_timer_touch(x,y,now)) return;
         bool visible=now<controls_until;

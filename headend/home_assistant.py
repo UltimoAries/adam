@@ -1,4 +1,5 @@
 """Persistent Home Assistant inventory with local names and bounded controls."""
+from .command_reply import command_reply
 from concurrent.futures import ThreadPoolExecutor
 import json
 import math
@@ -704,7 +705,7 @@ class HomeAssistantService:
     def valid(self, revision, entry=None):
         with self.lock:
             return (not self.closed and self.settings().enabled and revision == self.revision
-                    and (entry is None or (time.time() - entry['started'] <= 30 and self.online(entry['unit_id']))))
+                    and (entry is None or (time.time() - entry['started'] <= 30 and (entry.get('trigger') == 'text' or self.online(entry['unit_id'])))))
 
     def claim_session(self, unit_id: str, session_id: str) -> bool:
         with self.state.db() as db:
@@ -713,7 +714,7 @@ class HomeAssistantService:
                               (unit_id, session_id, time.time())).rowcount > 0
 
     def submit(self, entry, job):
-        if self.closed or entry['trigger'] != 'wake' or job['status'] != 'done':
+        if self.closed or entry['trigger'] not in ('wake', 'text') or job['status'] != 'done':
             return
         with self.lock:
             settings = self.settings()
@@ -741,15 +742,15 @@ class HomeAssistantService:
             with self.lock:
                 settings = self.settings()
                 if (self.closed or not settings.enabled or revision != self.revision
-                        or time.time() - entry['started'] > 30 or not self.online(entry['unit_id'])):
+                        or time.time() - entry['started'] > 30 or not (entry.get('trigger') == 'text' or self.online(entry['unit_id']))):
                     entry['reply'] = dict(status='ignored', text='', error='Command expired, unit is offline, or settings changed')
                     return
-                if not self.claim_session(entry['unit_id'], entry['id']):
+                if not self.claim_session(entry['unit_id'] or 'web', entry['id']):
                     entry['reply'] = dict(status='ignored', text='', error='This command session was already handled')
                     return
             result = self.answer(text, settings, lambda: self.valid(revision, entry))
             mark(entry, 'ha_result')
-            entry['reply'] = self.speak(result, entry['unit_id']) if not self.closed else result
+            entry['reply'] = command_reply(entry, result, self.speak) if not self.closed else result
             mark(entry, 'reply_ready')
         except Exception:
             entry['reply'] = dict(status='error', text='', error='Home Assistant command failed; it was not retried')

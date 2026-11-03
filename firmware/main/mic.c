@@ -3,6 +3,7 @@
 // Active analog/clock/pair-power sequence checked against the Apache-2.0
 // native Espressif driver preserved in vendor/espressif/es7210-native.c.
 #include "mic.h"
+#include "intercom.h"
 #include "board.h"
 #include "audio.h"
 #include "headend.h"
@@ -111,7 +112,7 @@ static void capture_task(void *unused)
         for (unsigned i=0;i<count*CHANNELS;++i) samples[i]=(int16_t)(wire_samples[i]>>16);
 #endif
         headend_feed(samples,count);
-        wake_feed(samples,count);
+        if (intercom_active()) intercom_feed(samples,count); else wake_feed(samples,count);
         uint64_t sum[2]={0}; unsigned maximum[2]={0},saturated[2]={0};
         unsigned phase_mask[2]={0},zeros[2]={0};
         for (unsigned i=0;i<count;++i) for (unsigned ch=0;ch<CHANNELS;++ch) {

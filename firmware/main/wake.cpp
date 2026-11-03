@@ -5,6 +5,7 @@ extern "C" {
 #include "headend.h"
 #include "audio.h"
 #include "mic.h"
+#include "intercom.h"
 }
 #include <atomic>
 #include <algorithm>
@@ -52,7 +53,8 @@ static void task(void *)
     int64_t cooldown=0;
     for (;;) {
         int64_t now=esp_timer_get_time();
-        bool busy=headend_busy() || audio_is_playing() || audio_clip_busy() || mic_recording();
+        bool busy=intercom_active()?!intercom_connected():
+            headend_busy() || audio_is_playing() || audio_clip_busy() || mic_recording();
         if (busy) cooldown=now+1000000;
         bool paused=!enabled || busy || now<cooldown;
         if (resync.exchange(false)) { paused=true; cooldown=now+1000000; }

@@ -28,6 +28,11 @@ typedef struct {
 static i2c_master_dev_handle_t codec;
 static i2s_chan_handle_t tx,rx;
 static QueueHandle_t requests;
+static QueueHandle_t stream_queue;
+static bool stream_requested,stream_warm;
+static int16_t reference[8][FRAMES];
+static unsigned reference_position;
+static unsigned stream_starved,stream_resets;
 static TaskHandle_t worker;
 static portMUX_TYPE lock=portMUX_INITIALIZER_UNLOCKED;
 static bool ready,playing,feeding;
@@ -96,14 +101,57 @@ static bool write_block(void)
     portENTER_CRITICAL(&lock);
     if (err!=ESP_OK || written!=sizeof(samples)) {
         ++write_errors; last_error=err==ESP_OK?ESP_ERR_INVALID_SIZE:err;
-    } else ++blocks;
+    } else {
+        ++blocks;
+        if (stream_requested) {
+            for (unsigned i=0;i<FRAMES;++i) reference[reference_position%8][i]=(int16_t)(samples[i*2]/65536);
+            ++reference_position;
+        }
+    }
     portEXIT_CRITICAL(&lock);
     return err==ESP_OK && written==sizeof(samples);
+}
+static void play_stream(void)
+{
+    memset(samples,0,sizeof(samples));
+    bool ok=reg_write(0x31,0x00)==ESP_OK;
+    portENTER_CRITICAL(&lock); playing=ok;feeding=ok;portEXIT_CRITICAL(&lock);
+    int16_t pcm[FRAMES]; float gain=0;
+    unsigned warm=0; bool primed=false;
+    while (ok) {
+        portENTER_CRITICAL(&lock); bool active=stream_requested;int level=volume;portEXIT_CRITICAL(&lock);
+        if (!active) break;
+        amplifier(level>0);
+        memset(pcm,0,sizeof(pcm));
+        if (warm++>=STARTUP_MS/10) {
+            portENTER_CRITICAL(&lock);stream_warm=true;portEXIT_CRITICAL(&lock);
+            if (!primed && uxQueueMessagesWaiting(stream_queue)>=4) primed=true;
+            if (primed && xQueueReceive(stream_queue,pcm,0)!=pdTRUE) {
+                primed=false;
+                portENTER_CRITICAL(&lock);++stream_starved;portEXIT_CRITICAL(&lock);
+            }
+        }
+        float target=level*level/10000.0f;
+        for (unsigned i=0;i<FRAMES;++i) {
+            gain+=(target-gain)*0.005f;
+            float output=pcm[i]*gain*output_gain;
+            int16_t sample=(int16_t)(output>32767?32767:output< -32768?-32768:output);
+            samples[i*2]=samples[i*2+1]=(int32_t)sample*65536;
+        }
+        ok=write_block();
+    }
+    memset(samples,0,sizeof(samples));
+    for (unsigned i=0;i<DMA_COUNT+1 && ok;++i) ok=write_block();
+    amplifier(false);reg_write(0x31,0x60);
+    portENTER_CRITICAL(&lock);stream_requested=false;playing=false;feeding=false;portEXIT_CRITICAL(&lock);
+    xQueueReset(stream_queue);
 }
 static void audio_task(void *unused)
 {
     request_t request;
     for (;;) {
+        portENTER_CRITICAL(&lock);bool stream=stream_requested;portEXIT_CRITICAL(&lock);
+        if (stream) { play_stream();continue; }
         // Keep the common clock running while idle so capture is uninterrupted.
         if (xQueueReceive(requests,&request,0)!=pdPASS) {
             memset(samples,0,sizeof(samples));
@@ -230,7 +278,8 @@ bool audio_init(i2c_master_bus_handle_t bus,int initial_volume)
     const i2s_event_callbacks_t callbacks={.on_send_q_ovf=queue_overflow};
     if ((err=i2s_channel_register_event_callback(tx,&callbacks,NULL))!=ESP_OK) goto fail;
     requests=xQueueCreate(1,sizeof(request_t));
-    if (!requests) { err=ESP_ERR_NO_MEM; goto fail; }
+    stream_queue=xQueueCreate(12,FRAMES*sizeof(int16_t));
+    if (!requests || !stream_queue) { err=ESP_ERR_NO_MEM; goto fail; }
     for (int i=0;i<TABLE_SIZE;++i) sine_table[i]=(int16_t)(4096*sinf(i*6.283185307f/TABLE_SIZE));
     if ((err=i2s_channel_enable(tx))!=ESP_OK) goto fail;
     if (xTaskCreatePinnedToCore(audio_task,"audio",4096,NULL,5,&worker,1)!=pdPASS) {
@@ -243,6 +292,7 @@ bool audio_init(i2c_master_bus_handle_t bus,int initial_volume)
 fail:
     last_error=err;
     if (requests) { vQueueDelete(requests); requests=NULL; }
+    if (stream_queue) { vQueueDelete(stream_queue); stream_queue=NULL; }
     if (tx) { i2s_del_channel(tx); tx=NULL; }
     if (rx) { i2s_del_channel(rx); rx=NULL; }
     if (codec) { i2c_master_bus_rm_device(codec); codec=NULL; }
@@ -269,6 +319,7 @@ static bool submit(unsigned hz,unsigned ms,bool chime)
 {
     if (!ready) return false;
     portENTER_CRITICAL(&lock);
+    if (stream_requested) { portEXIT_CRITICAL(&lock);return false; }
     request_t request={.hz=hz,.ms=ms,.id=++generation,.chime=chime};
     pending_clip=false;
     portEXIT_CRITICAL(&lock);
@@ -279,7 +330,7 @@ bool audio_play_tone(unsigned hz,unsigned ms)
 { return hz>=100 && hz<=4000 && ms>=100 && ms<=30000 && submit(hz,ms,false); }
 bool audio_play_clip(unsigned channel)
 {
-    if (!ready || channel>1) return false;
+    if (!ready || channel>1 || audio_is_playing()) return false;
     size_t bytes=0; const int16_t *pcm=mic_clip(&bytes);
     if (!pcm) return false;
     unsigned count=bytes/4,peak=0;
@@ -311,7 +362,42 @@ unsigned audio_play_listen_cue(void)
 { return audio_play_message((const int16_t *)listen_cue_start,(listen_cue_end-listen_cue_start)/2); }
 bool audio_clip_busy(void)
 { portENTER_CRITICAL(&lock); bool busy=current_clip||pending_clip; portEXIT_CRITICAL(&lock); return busy; }
-void audio_stop(void) { submit(0,0,false); }
+void audio_stop(void) { audio_stream_stop();submit(0,0,false); }
+bool audio_stream_start(void)
+{
+    if (!ready || audio_is_playing() || audio_clip_busy() || mic_recording()) return false;
+    xQueueReset(stream_queue);
+    portENTER_CRITICAL(&lock);
+    memset(reference,0,sizeof(reference));reference_position=0;stream_requested=true;stream_warm=false;
+    stream_starved=stream_resets=0;
+    portEXIT_CRITICAL(&lock);
+    return true;
+}
+void audio_stream_stop(void)
+{ portENTER_CRITICAL(&lock);stream_requested=false;portEXIT_CRITICAL(&lock); }
+bool audio_stream_ready(void)
+{ portENTER_CRITICAL(&lock);bool value=stream_requested && stream_warm;portEXIT_CRITICAL(&lock);return value; }
+bool audio_stream_write(const int16_t *pcm,unsigned frames)
+{
+    if (frames!=320 || !stream_queue) return false;
+    portENTER_CRITICAL(&lock);bool active=stream_requested;portEXIT_CRITICAL(&lock);
+    if (!active) return false;
+    // A slow receiver must drop queued speech, never accumulate old conversation.
+    if (uxQueueSpacesAvailable(stream_queue)<2) {
+        xQueueReset(stream_queue);
+        portENTER_CRITICAL(&lock);++stream_resets;portEXIT_CRITICAL(&lock);
+    }
+    return xQueueSend(stream_queue,pcm,0)==pdTRUE && xQueueSend(stream_queue,pcm+FRAMES,0)==pdTRUE;
+}
+void audio_stream_reference(int16_t *pcm)
+{
+    portENTER_CRITICAL(&lock);
+    // TX has six DMA buffers. Give AEC a reference slightly before acoustic
+    // playback; its filter models the remaining DMA/speaker/room delay.
+    if (reference_position>=4) memcpy(pcm,reference[(reference_position-4)%8],FRAMES*sizeof(int16_t));
+    else memset(pcm,0,FRAMES*sizeof(int16_t));
+    portEXIT_CRITICAL(&lock);
+}
 bool audio_is_ready(void) { return ready; }
 bool audio_is_playing(void)
 { portENTER_CRITICAL(&lock); bool value=playing; portEXIT_CRITICAL(&lock); return value; }
@@ -320,10 +406,12 @@ void audio_status(void)
     portENTER_CRITICAL(&lock);
     bool active=playing; int level=volume;
     unsigned count=played,frames=blocks,errors=write_errors,missed=underruns,stack=worker_stack;
+    unsigned starved=stream_starved,resets=stream_resets;
     esp_err_t err=last_error;
     portEXIT_CRITICAL(&lock);
     printf("OK audio ready=%d playing=%d volume=%d codec=%02X%02X rate=%d bits=32 slots=2 dma_bytes=%d "
            "completed=%u blocks=%u write_errors=%u queue_overflows=%u stack_min=%u last_error=%s output_gain=%.1f\n",
            ready,active,level,chip_hi,chip_lo,RATE,DMA_COUNT*FRAMES*8,
            count,frames,errors,missed,stack,esp_err_to_name(err),(double)output_gain);
+    printf("OK intercom playback starved=%u queue_resets=%u\n",starved,resets);
 }

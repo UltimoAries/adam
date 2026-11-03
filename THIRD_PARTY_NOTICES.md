@@ -22,6 +22,14 @@ retains the notices and terms supplied with that material.
 
 ## Additional notes
 
+- **Intercom dependencies (downloaded separately):** ESP-SR 2.5.5 supplies
+  on-device acoustic echo cancellation and carries the **Espressif MIT License**,
+  which grants use on Espressif products. Its API headers also contain Apache-2.0
+  notices. Preserve the managed component's `LICENSE` when distributing it.
+  `esp_websocket_client` 1.8.0 is Apache-2.0. Their dependencies and hashes are
+  pinned in `firmware/dependencies.lock`; these downloaded libraries are not
+  committed to this repository.
+
 - **Optional camera worker:** MediaPipe 0.10.18 and its Google-provided gesture
   model are downloaded separately when building `deploy/pi5/Dockerfile.camera`.
   MediaPipe is Apache-2.0; see its [upstream license](https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE).

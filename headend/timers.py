@@ -1,4 +1,5 @@
 """Persistent countdown timers: voice intents, dashboard API, and device panel sync."""
+from .command_reply import command_reply
 from concurrent.futures import ThreadPoolExecutor
 import math
 import re
@@ -537,7 +538,7 @@ class TimerService:
         return dict(status='ignored', text='')
 
     def submit(self, entry: dict, job: dict) -> bool:
-        if self.closed or job.get('status') != 'done' or entry.get('trigger') != 'wake':
+        if self.closed or job.get('status') != 'done' or entry.get('trigger') not in ('wake', 'text'):
             return False
         if not self.matches_utterance(job.get('text', ''), entry.get('unit_id')):
             return False
@@ -560,7 +561,7 @@ class TimerService:
             result['lookup_ms'] = round((time.monotonic() - started) * 1000)
             mark(entry, 'answer_ready')
             if not self.closed and result.get('text'):
-                entry['reply'] = self.deliver(result, entry['unit_id'])
+                entry['reply'] = command_reply(entry, result, self.deliver)
                 mark(entry, 'reply_ready')
             else:
                 entry['reply'] = result

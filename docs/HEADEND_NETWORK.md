@@ -79,7 +79,8 @@ enforce the diagnostic clip limits.
   optional exact-frame event snapshots. See [CAMERAS.md](CAMERAS.md).
   This is separate from speaker wake capture and pauses during voice processing.
 
-Announcements are queued messages; live two-way intercom and SIP are not implemented.
+Announcements are queued messages. The experimental [live intercom](INTERCOM.md)
+adds opt-in full-duplex drop-in with v31 firmware; SIP is not implemented.
 
 ## Architecture
 

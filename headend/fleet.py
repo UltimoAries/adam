@@ -24,6 +24,8 @@ from .training_api import add_training_routes
 from .conversation import ConversationService, add_conversation_routes
 from .recording_work import RecordingWork
 from .latency import mark
+from .intercom import Intercom, add_intercom_routes
+from .text_commands import TextCommands
 
 
 class Credentials(BaseModel):
@@ -57,6 +59,7 @@ class Fleet:
         self.voices = voices or VoiceService(state.directory/'voices')
         self.speech = speech or self.voices
         self.queries = QueryService(state, self.voices, self.speech, self.playback_pcm)
+        self.intercom = Intercom(state, self.queries.deliver)
         self.timers = TimerService(state, self.queries.deliver)
         self.home_assistant = HomeAssistantService(state, self.queries.deliver)
         self.conversation = ConversationService(state, self.queries.deliver)
@@ -69,6 +72,8 @@ class Fleet:
         self.login_attempts = {}
         self.router = APIRouter()
         self.routes()
+        self.text_commands = TextCommands(self)
+        add_intercom_routes(self.router, self.intercom)
         add_voice_routes(self.router,self.voices)
         add_query_routes(self.router,self.queries)
         add_timer_routes(self.router,self.timers)
@@ -80,6 +85,15 @@ class Fleet:
         mark(entry, 'transcribed')
         entry.setdefault('timings_ms', {}).update({k: job[k] for k in ('queue_ms', 'inference_ms') if k in job})
         if job['status'] != 'done' or entry['trigger'] != 'wake':
+            return
+        self.dispatch_command(entry, job)
+
+    def dispatch_command(self, entry, job):
+        if self.intercom.submit(entry, job):
+            return
+        if (entry.get('trigger') == 'text' and not entry.get('unit_id')
+                and self.timers.matches_utterance(job['text'], None)):
+            entry['reply'] = dict(status='unsupported', text='Choose a speaker for this timer command. Timers ring on that speaker.')
             return
         if self.timers.submit(entry, job):
             return
@@ -101,6 +115,8 @@ class Fleet:
             self.queries.submit(entry, job)
         else:
             self.conversation.submit(entry, job)
+        if entry.get('trigger') == 'text' and entry.get('reply', {}).get('status') == 'ignored':
+            entry['reply'] = dict(status='unsupported', text='I could not handle that command. Check the device name or enable conversation in Model services.')
 
     def require_unit(self, request, unit_id):
         header = request.headers.get('authorization','')
@@ -187,6 +203,7 @@ class Fleet:
             archive_status = await asyncio.to_thread(self.archive.status)
             default_voice=await asyncio.to_thread(self.voices.registry.default)
             return dict(units=self.state.units(),pages=self.state.pages(),sessions=sessions,
+                        intercom=self.intercom.public(),
                         timers=self.timers.list_timers(),
                         url=self.url,protocol=1,wake_requirement='Hey Adam on device',default_voice=default_voice,
                         training_archive=archive_status)
@@ -219,7 +236,7 @@ class Fleet:
         async def listen(unit_id: str):
             if not any(u['id']==unit_id and u['online'] for u in self.state.units()):
                 raise HTTPException(409,'Device is offline')
-            if unit_id in self.active:
+            if unit_id in self.active or self.intercom.current(unit_id):
                 raise HTTPException(409,'Device is already listening')
             self.commands[unit_id] = dict(type='listen',expires=time.time()+15)
             return {'requested':True}
@@ -245,9 +262,10 @@ class Fleet:
             return {'cancelled':True}
 
         @router.get('/api/units/{unit_id}/poll')
-        async def poll(request: Request,unit_id: str,firmware: str='',wake_model: str='unavailable',busy: bool=False,dismissed: str=''):
+        async def poll(request: Request,unit_id: str,firmware: str='',wake_model: str='unavailable',busy: bool=False,dismissed: str='',intercom: bool=False):
             self.require_unit(request,unit_id)
             self.state.heartbeat(unit_id,firmware,wake_model)
+            self.intercom.heartbeat(unit_id, intercom, busy)
             with self.state.db() as db:
                 unit_name = db.execute('SELECT name FROM units WHERE id=?', (unit_id,)).fetchone()['name']
             panel = self.panel.snapshot(unit_name, unit_id)
@@ -255,6 +273,9 @@ class Fleet:
             panel['timers'] = self.timers.reconcile_poll(unit_id, dismissed)
             if busy:
                 return dict(type='idle', panel=panel)
+            call = self.intercom.offer(unit_id)
+            if call:
+                return dict(call, panel=panel)
             command = self.commands.pop(unit_id,None)
             if command and command['expires']>time.time():
                 return dict(command, panel=panel)
@@ -277,7 +298,7 @@ class Fleet:
         @router.post('/api/units/{unit_id}/audio',status_code=202)
         async def audio(request: Request,unit_id: str):
             self.require_unit(request,unit_id)
-            if unit_id in self.active or len(self.active)>=4:
+            if unit_id in self.active or len(self.active)>=4 or self.intercom.current(unit_id):
                 raise HTTPException(409,'Audio receiver is busy')
             session_id = request.headers.get('x-session-id','')
             if session_id in self.sessions or self.home_assistant.seen(unit_id, session_id) or await asyncio.to_thread(self.archive.seen,unit_id,session_id):
@@ -299,7 +320,7 @@ class Fleet:
             automatic=mode=='silence-v1'
             # The durable duplicate lookup above yields; reserve again without a yield
             # so concurrent uploads cannot both claim the same device or fifth slot.
-            if unit_id in self.active or len(self.active)>=4:
+            if unit_id in self.active or len(self.active)>=4 or self.intercom.current(unit_id):
                 raise HTTPException(409,'Audio receiver is busy')
             self.active.add(unit_id)
             entry = dict(id=session_id,unit_id=unit_id,trigger=session.trigger.value,model_id=session.model_id,
