@@ -23,6 +23,9 @@ Utilities in `tools/` support local head-end setup, ESP32-S3 firmware builds, US
 Use `idf.ps1` for the original 1.85C BOX V2. Use `idf146.ps1` for the
 non-suffixed Waveshare 1.46; it keeps `sdkconfig.146` and `build146` separate.
 Never cross-flash these targets. See the [board guide](../docs/BOARD_146.md).
+Both wrappers accept `-p COM6` or `-Port COM6` explicitly; the selected port is
+forwarded to ESP-IDF instead of being consumed as a PowerShell common parameter.
+Run `.\tools\test_idf_args.ps1` to check argument forwarding without hardware.
 
 | Script | Purpose |
 | --- | --- |
@@ -51,6 +54,7 @@ All USB serial scripts accept `--port <PORT>` and default to `VOICE_USB_PORT` if
 | `control.py` | Sends a single newline-terminated console command over USB serial and verifies `OK` acknowledgement. |
 | `snapshot.py` | Downloads the live 360x360 RGB565 framebuffer over USB (`snapshot`) and saves a circular-masked PNG (requires `Pillow`). |
 | `mic_capture.py` | Triggers or downloads an on-device stereo 16 kHz diagnostic recording, saving stereo/per-mic WAVs and FFT/RMS metrics. |
+| `reply_diagnostic.py` | Downloads an already-armed reply diagnostic into separate microphone, playback-reference, and cleaned WAVs; never starts capture. Pass `--port` explicitly and keep output in ignored artifacts. Interruption testing is paused; see [the handoff](../docs/FOLLOWUP_CONVERSATION.md). |
 | `watch_serial.py` | Passively logs ESP32 USB serial output (with automatic USB reconnect and optional `--status` polling) without resetting the board. |
 | `capture.py` | Captures a settled frame from a local USB webcam (`--camera`, `--exposure`; requires `opencv-python`). |
 | `bench.py` | Steps through display color, brightness, rotation, and eye suites over serial while capturing webcam evidence (requires `opencv-python`). |
@@ -91,6 +95,7 @@ stereo channels and does not support shared-clock loopback. USB snapshots remain
 | `check_fleet_browser.py` | End-to-end headless browser QA across login, 3D monitor map, paging, voices, Home Assistant, weather queries (`Seattle` / `Portland`), training review, and mobile layout. Requires `requests`, `websockets`, and Chrome/Chromium (auto-detected or set via `CHROME_BIN`). |
 | `fleet_ui_fixture.py` | Isolated FastAPI fixture server launched automatically by `check_fleet_browser.py` on `127.0.0.1:8766` using temporary test state and fake hardware/services. |
 | `test_gpu_control.py` | Standard `unittest` suite for the Windows GPU model-host tray controller (`deploy/model-host/adam_control.pyw`), runnable without live services. |
+| `test_idf_args.ps1` | Verifies both firmware wrappers preserve `-p` / `-Port`, build arguments, and board isolation using a mock `idf.py`; never opens USB or flashes a device. |
 | `check_voice_runtime.py` | Offline integration check that packages, imports, previews, pages, removes, and locally transcribes a real Piper voice in an isolated temp directory. |
 | `check_pi_host.py` | Read-only Raspberry Pi preflight reporting OS, memory, disk, thermals, throttling flags, and Docker/Compose availability. |
 | `check_pi_runtime.py` | Read-only container/local check (`--headend-dir` / `ADAM_HEADEND_DIR`) verifying SQLite/archive SHA-256 integrity, Home Assistant reachability, and Piper + Faster-Whisper latency. |

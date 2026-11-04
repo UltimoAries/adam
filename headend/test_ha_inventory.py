@@ -134,6 +134,58 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(self.command('Turn on Bedroom and set Thermostat to 70 degrees')['status'], 'unsupported')
         self.assertEqual(self.actions, [])
 
+    def test_on_and_brightness_reference_is_one_parameterized_light_command(self):
+        for phrase in ('Hey Adam turn on the living room light and set it to 30%',
+                       'Can we turn Living Room on and dim that to 30 percent?',
+                       'Turn on Living Room and set the brightness of that light to 30%',
+                       'Turn on Living Room and set Living Room to 30 percent',
+                       'Set Living Room to 30 percent and turn it on'):
+            self.actions.clear()
+            result = self.command(phrase)
+            self.assertEqual(result['status'], 'sent', result)
+            self.assertEqual(result['entity_id'], 'light.lounge')
+            self.assertEqual(result['action'], 'brightness')
+            self.assertEqual(self.actions, [('/api/services/light/turn_on', dict(entity_id='light.lounge',brightness_pct=30))])
+
+    def test_in_sentence_reference_rejects_ambiguity_unknown_targets_and_conflicts(self):
+        for phrase in ('Turn on Living Room and Bedroom and set it to 30%',
+                       'Turn on Bedroom and turn on Living Room and set it to 30%',
+                       'Turn on Living Room and turn it off',
+                       'Turn off Living Room and set it to 30%',
+                       'Turn on Living Room and set it to 0%',
+                       'Turn on Living Room and set it to 30% and set it to 40%',
+                       'Turn on Missing Light and set it to 30%',
+                       'Set it to 30% and turn on Living Room',
+                       'Turn on Living Room and set it to 30% and turn off Missing Light',
+                       'Turn on Bedroom and set it to 30% and turn on Living Room and turn on Office Fan and lock Front Door'):
+            result = self.command(phrase)
+            self.assertIn(result['status'], ('unsupported','ignored'), (phrase,result))
+            self.assertEqual(self.actions, [], phrase)
+
+    def test_combined_light_request_validates_bounds_and_capabilities_before_on(self):
+        for phrase in ('Turn on Living Room and set it to 101%',
+                       'Turn on Living Room and set it to -30%',
+                       'Can we not turn on Living Room and set it to 30%?',
+                       'Turn on Living Room and do not set it to 30%'):
+            self.assertNotIn(self.command(phrase)['status'], ('sent','answered'))
+            self.assertEqual(self.actions, [])
+        self.rows[0]['attributes']['supported_color_modes'] = ['onoff']
+        self.refresh()
+        self.assertEqual(self.command('Turn on Living Room and set it to 30%')['status'], 'unsupported')
+        self.assertEqual(self.actions, [])
+
+    def test_combined_light_request_rechecks_live_capability_and_can_precede_other_device(self):
+        # The catalog still says dimmable; the device no longer supports it.
+        self.rows[0]['attributes']['supported_color_modes'] = ['onoff']
+        self.assertEqual(self.command('Turn on Living Room and set it to 30%')['status'], 'unsupported')
+        self.assertEqual(self.actions, [])
+        self.rows[0]['attributes']['supported_color_modes'] = ['brightness']
+        self.rows[1]['state'] = 'on'
+        result = self.command('Turn on Living Room and set it to 30% and turn off Bedroom')
+        self.assertEqual(result['status'], 'sent', result)
+        self.assertEqual(self.actions, [('/api/services/light/turn_on', dict(entity_id='light.lounge',brightness_pct=30)),
+                                        ('/api/services/light/turn_off', dict(entity_id='light.bedroom'))])
+
     def test_polite_commands_keep_exact_targets_and_reject_negation(self):
         self.assertEqual(self.command('Hey Adam, can you unlock the front door?')['state'], 'unlocked')
         self.assertEqual(self.actions[-1], ('/api/services/lock/unlock', {'entity_id': 'lock.front'}))
@@ -143,6 +195,48 @@ class InventoryTests(unittest.TestCase):
         for phrase in ('Can you not unlock Front Door?', 'Would you unlock a different door?'):
             self.assertEqual(self.command(phrase)['status'], 'ignored')
         self.assertEqual(len(self.actions), before)
+
+    def test_shut_and_close_are_the_same_validated_cover_action(self):
+        for phrase in ('Close the garage door', 'Shut the garage door',
+                       'Hey Adam, can we shut the garage door?', 'Could you please shut Garage Door?'):
+            self.rows[2]['state'] = 'open'
+            self.actions.clear()
+            result = self.command(phrase)
+            self.assertEqual(result['action'], 'close', result)
+            self.assertEqual(result['state'], 'closed')
+            self.assertEqual(self.actions, [('/api/services/cover/close_cover', dict(entity_id='cover.garage'))])
+        self.actions.clear()
+        self.assertEqual(self.command('Is the garage door shut?')['action'], 'status')
+        self.assertEqual(self.actions, [])
+
+    def test_shut_keeps_negation_ambiguity_and_capability_checks(self):
+        self.rows[2]['state'] = 'open'
+        for phrase in ('Do not shut the garage door', 'Can we not shut the garage door?',
+                       'Shut Missing Door', 'Shut off Living Room', 'Shut Front Door',
+                       'Open Garage Door and shut Garage Door'):
+            self.assertNotIn(self.command(phrase)['status'], ('sent','answered'), phrase)
+        self.assertEqual(self.actions, [])
+        self.rows[2]['attributes']['supported_features'] = 1  # Live close capability removed.
+        self.assertEqual(self.command('Shut Garage Door')['status'], 'unsupported')
+        self.assertEqual(self.actions, [])
+        self.rows.append(dict(entity_id='cover.second', state='open', attributes=dict(friendly_name='Garage Door', supported_features=3)))
+        self.refresh()
+        self.assertEqual(self.command('Shut Garage Door')['status'], 'ambiguous')
+        self.assertEqual(self.actions, [])
+
+    def test_shut_in_compounds_validates_all_targets(self):
+        self.rows[2]['state'] = 'open'
+        self.command('Turn on Bedroom and shut Garage Door')
+        self.assertEqual([a[0] for a in self.actions], ['/api/services/light/turn_on','/api/services/cover/close_cover'])
+        self.actions.clear()
+        self.rows[2]['state'] = 'open'
+        self.rows.append(dict(entity_id='cover.back', state='open', attributes=dict(friendly_name='Back Door', supported_features=3)))
+        self.refresh()
+        self.command('Shut Garage Door and Back Door')
+        self.assertEqual({a[1]['entity_id'] for a in self.actions}, {'cover.garage','cover.back'})
+        self.actions.clear()
+        self.assertEqual(self.command('Open Garage Door and shut Missing Door')['status'], 'unsupported')
+        self.assertEqual(self.actions, [])
 
     def test_removal_missing_entity_and_changed_origin_do_not_remap(self):
         self.save('light.bedroom',imported=False)

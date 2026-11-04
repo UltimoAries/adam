@@ -1,5 +1,12 @@
-param([Parameter(ValueFromRemainingArguments = $true)][string[]]$IdfArgs)
+[CmdletBinding(PositionalBinding = $false)]
+param(
+    [Alias('p')][string]$Port,
+    [Parameter(ValueFromRemainingArguments = $true)][string[]]$IdfArgs
+)
 $ErrorActionPreference = 'Stop'
+# Without an explicit alias, PowerShell consumes -p as PipelineVariable and
+# idf.py silently falls back to probing every serial port.
+if ($Port) { $IdfArgs = @('--port', $Port) + $IdfArgs }
 
 if (-not (Get-Command idf.py -ErrorAction SilentlyContinue)) {
     $candidates = New-Object System.Collections.Generic.List[string]

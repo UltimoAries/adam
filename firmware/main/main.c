@@ -30,6 +30,7 @@
 #include "audio_clocks.h"
 #include "mic.h"
 #include "headend.h"
+#include "barge.h"
 #include "wake.h"
 #include "metrics.h"
 
@@ -333,6 +334,19 @@ static void command(char *line)
         mic_stop(); printf("OK mic stop\n");
     } else if (n==2 && !strcmp(args[0],"mic") && !strcmp(args[1],"clear")) {
         printf("%s mic clear\n",mic_clear()?"OK":"ERR");
+    } else if (n==2 && !strcmp(args[0],"reply") && !strcmp(args[1],"record")) {
+        printf("%s reply record armed\n",(!headend_busy() && barge_record())?"OK":"ERR");
+    } else if (n==2 && !strcmp(args[0],"reply") && !strcmp(args[1],"download")) {
+        size_t bytes=0;
+        const uint8_t *pcm=(const uint8_t *)barge_clip(&bytes);
+        if (!pcm) { printf("ERR no completed reply diagnostic\n"); return; }
+        printf("AUDIO %u 16000 3 16\n",(unsigned)bytes);fflush(stdout);
+        for (size_t sent=0;sent<bytes;) {
+            size_t chunk=bytes-sent;if (chunk>512) chunk=512;
+            int wrote=usb_serial_jtag_write_bytes(pcm+sent,chunk,pdMS_TO_TICKS(3000));
+            if (wrote<=0) break;
+            sent+=wrote;
+        }
     } else if (n==2 && !strcmp(args[0],"mic") && !strcmp(args[1],"download")) {
         size_t bytes=0;
         const uint8_t *pcm=(const uint8_t *)mic_clip(&bytes);

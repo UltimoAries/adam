@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from .ha_devices import (ENTITY_PATTERN, MAX_COMPOUND_CLAUSES, attributes_for_inventory, controls,
                          capabilities, expand_shared_verb_clause, format_entity_state, has_negation,
                          is_ha_control_clause, normalized, split_explicit_clauses,
-                         strip_wake_and_polite, summary_intent, action_payload)
+                         strip_wake_and_polite, summary_intent, action_payload, intent)
 from .ha_inventory import HomeAssistantInventory
 from .latency import mark
 
@@ -168,14 +168,37 @@ class HomeAssistantClient:
         data = self.request(settings, 'GET', '/api/states/'+entity_id)
         if not isinstance(data, dict) or data.get('entity_id') != entity_id or not isinstance(data.get('state'), str):
             raise HomeAssistantUnavailable('Home Assistant returned an invalid device state.')
-        data['attributes'] = attributes_for_inventory(data.get('attributes') or {})
+        # Only typed, explicitly selected diagnostics may reach a reply. Never
+        # echo arbitrary integration error strings, URLs or credential fields.
+        diagnostics = []
+        from datetime import datetime
+        for key, label in [('last_changed', 'State last changed'), ('last_updated', 'State last updated')]:
+            value = data.get(key)
+            if isinstance(value, str) and len(value) <= 40:
+                try:
+                    stamp = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                    if stamp.tzinfo:
+                        diagnostics.append(label+': '+stamp.isoformat())
+                except ValueError:
+                    pass
+        attrs = data.get('attributes') or {}
+        if isinstance(attrs, dict):
+            if attrs.get('restored') is True:
+                diagnostics.append('Home Assistant marks this as a restored state, not a confirmed live update.')
+            for key, label in [('battery_level', 'Reported battery percent'), ('linkquality', 'Reported link quality'), ('rssi', 'Reported RSSI')]:
+                value = attrs.get(key)
+                if type(value) in (int, float) and math.isfinite(value) and -10000 <= value <= 10000:
+                    diagnostics.append(f'{label}: {value:g}. This alone does not establish an outage cause.')
+        data['diagnostics'] = diagnostics
+        data['attributes'] = attributes_for_inventory(attrs if isinstance(attrs, dict) else {})
         return data
 
     def control(self, settings, device, action, value=None, before_action=lambda: True):
         entity_id, name = device['entity_id'], device['name']
         state = self.device_state(settings, entity_id)
         current, attrs = state['state'], state['attributes']
-        result = dict(source='Home Assistant', source_url=settings.url, entity_id=entity_id, state=current)
+        result = dict(source='Home Assistant', source_url=settings.url, entity_id=entity_id, name=name,
+                      state=current, action=action, value=value)
         if current == 'unavailable' or (current == 'unknown' and entity_id.split('.')[0] not in ('button', 'input_button', 'scene', 'script')):
             return dict(result, status='unavailable', text=f'{name} is unavailable in Home Assistant. No command was sent.')
         if action == 'status':
@@ -185,6 +208,7 @@ class HomeAssistantClient:
         if action == 'level':
             action = {'light': 'brightness', 'fan': 'speed', 'cover': 'position', 'climate': 'temperature',
                       'media_player': 'volume', 'number': 'value', 'input_number': 'value'}.get(entity_id.split('.')[0], 'level')
+        result['action'] = action
         control, body = action_payload(entity_id, attrs, action, value)
         expected = control.get('expected')
         if expected and current == expected:
@@ -400,6 +424,8 @@ class HomeAssistantService:
         except HomeAssistantUnavailable as exc:
             return dict(base, status='unavailable', text=str(exc))
 
+        base['devices'] = [dict(entity_id=r['entity_id'], name=r['name'], state=live.get(r['entity_id'], 'unavailable')) for r in targets]
+        base['checked_at'] = time.time()
         triggered, offline = [], []
         for r in targets:
             st = live.get(r['entity_id'], 'unavailable')
@@ -423,9 +449,12 @@ class HomeAssistantService:
                 return f"{', '.join(shown)}, and {extra} more"
             if len(shown) == 2:
                 return f'{shown[0]} and {shown[1]}'
+            if len(shown) == 3:
+                return f'{shown[0]}, {shown[1]}, and {shown[2]}'
             return shown[0]
 
-        suffix = f' ({len(offline)} unavailable.)' if offline else ''
+        suffix = (' Unavailable: ' + _join_names(offline) + '.') if offline else ''
+        base['details'] = [r['name'] + ': ' + r['state'] for r in base['devices']][:100]
         if triggered:
             count = len(triggered)
             noun = singular if count == 1 else plural
@@ -473,6 +502,24 @@ class HomeAssistantService:
             m = self.inventory.matches(settings, primary)
             if not m and fallback:
                 m = self.inventory.matches(settings, fallback)
+            if not m:
+                # Resolve only explicit singular references within this request.
+                # Never borrow a target from a prior conversation or choose one
+                # arbitrarily after a clause naming multiple devices.
+                reference = re.fullmatch(
+                    r'(?:set|dim) (?:(?:the )?brightness of )?(it|that|that one|this one|that light|that device) to .+|'
+                    r'(?:turn|switch) (it|that|that one|this one|that light|that device) (?:on|off)|'
+                    r'(?:turn|switch) (?:on|off) (it|that|that one|this one|that light|that device)',
+                    strip_wake_and_polite(primary), flags=re.I)
+                if reference and steps and all(step[0] == 'device' for step in steps):
+                    antecedents = {step[1]['entity_id']: step[1] for step in steps}
+                    if len(antecedents) != 1:
+                        return dict(kind='unsupported', text='Please name the device for that part of the command. More than one device was mentioned. No commands were sent.')
+                    row = next(iter(antecedents.values()))
+                    pronoun = next(group for group in reference.groups() if group)
+                    action = intent(primary, pronoun, row['entity_id'], row.get('attributes'))
+                    if action:
+                        m = [(row, action)]
             if len(m) > 1:
                 return dict(kind='ambiguous')
             if len(m) == 1:
@@ -501,16 +548,29 @@ class HomeAssistantService:
             for kind, target, act in steps:
                 if kind == 'device':
                     eid = target['entity_id']
+                    if eid.startswith('light.') and act[0] == 'level':
+                        act = ('brightness', act[1])
                     sig = (act[0], json.dumps(act[1], sort_keys=True) if isinstance(act[1], list) else act[1])
                     if act[0] != 'status':
                         if eid in seen_actions:
-                            if seen_actions[eid] == sig:
+                            previous_sig, previous_index = seen_actions[eid]
+                            if previous_sig == sig:
                                 continue
+                            # Adjacent on + brightness for one light is one
+                            # turn_on(brightness_pct=...) call. Brightness zero
+                            # conflicts with an explicit request to turn on.
+                            if (eid.startswith('light.') and previous_index == len(deduped)-1
+                                    and {previous_sig[0], sig[0]} == {'on', 'brightness'}):
+                                brightness = act if act[0] == 'brightness' else deduped[previous_index][2]
+                                if isinstance(brightness[1], (int, float)) and brightness[1] > 0:
+                                    deduped[previous_index] = ('device', target, brightness)
+                                    seen_actions[eid] = (brightness, previous_index)
+                                    continue
                             return dict(
                                 kind='unsupported',
                                 text='Those commands conflict on the same device. No commands were sent.',
                             )
-                        seen_actions[eid] = sig
+                        seen_actions[eid] = (sig, len(deduped))
                 deduped.append((kind, target, act))
             return dict(kind='compound', steps=deduped)
 
@@ -655,7 +715,9 @@ class HomeAssistantService:
             except HomeAssistantUnavailable as exc:
                 return dict(status='unavailable', text=str(exc), source='Home Assistant', source_url=settings.url)
 
-        steps = plan['steps']
+        return self._answer_steps(plan['steps'], settings, before_action)
+
+    def _answer_steps(self, steps, settings, before_action):
         try:
             for step_kind, target, act in steps:
                 if step_kind == 'device':
@@ -714,11 +776,11 @@ class HomeAssistantService:
                               (unit_id, session_id, time.time())).rowcount > 0
 
     def submit(self, entry, job):
-        if self.closed or entry['trigger'] not in ('wake', 'text') or job['status'] != 'done':
+        if self.closed or entry['trigger'] not in ('wake', 'followup', 'text') or job['status'] != 'done':
             return
         with self.lock:
             settings = self.settings()
-            plan = self.resolve_plan(job['text'], settings) if settings.enabled else dict(kind='ignored')
+            plan = (dict(kind='context') if entry.get('context_action') else self.resolve_plan(job['text'], settings)) if settings.enabled else dict(kind='ignored')
             # 'partial_unmatched' is claimed so the reply names the clause that failed to match.
             if not settings.enabled or plan['kind'] == 'ignored':
                 entry['reply'] = dict(status='ignored', text='')
@@ -748,7 +810,30 @@ class HomeAssistantService:
                 if not self.claim_session(entry['unit_id'] or 'web', entry['id']):
                     entry['reply'] = dict(status='ignored', text='', error='This command session was already handled')
                     return
-            result = self.answer(text, settings, lambda: self.valid(revision, entry))
+            context = entry.get('context_action')
+            if context:
+                ids = context.get('entity_ids', [context.get('entity_id')])
+                targets = [r for r in self.inventory.rows(settings) if r['entity_id'] in ids
+                           and r['imported'] and r['enabled'] and r['present']]
+                if (context['origin'] != settings.url or context['revision'] != revision
+                        or not 1 <= len(ids) <= MAX_COMPOUND_CLAUSES or len(targets) != len(ids)):
+                    result = dict(status='unsupported', text='Device settings changed. Please say the full command again. No command was sent.')
+                elif 'entity_ids' not in context:
+                    # Single-device setpoints keep their existing live-state validation.
+                    try:
+                        result = self.client.control(settings, targets[0], context['action'], context['value'],
+                                                     lambda:self.valid(revision, entry))
+                    except ValueError as exc:
+                        result = dict(status='unsupported', text=str(exc))
+                    except HomeAssistantUnavailable as exc:
+                        result = dict(status='unavailable', text=str(exc))
+                else:
+                    result = self._answer_steps([('device', row, (context['action'], context['value'])) for row in targets],
+                                                settings, lambda:self.valid(revision, entry))
+                if entry.get('correction_from') and result.get('status') in ('answered', 'sent'):
+                    result['text'] += ' The earlier '+entry['correction_from']+' command was not undone.'
+            else:
+                result = self.answer(text, settings, lambda: self.valid(revision, entry))
             mark(entry, 'ha_result')
             entry['reply'] = command_reply(entry, result, self.speak) if not self.closed else result
             mark(entry, 'reply_ready')

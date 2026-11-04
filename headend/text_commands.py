@@ -3,7 +3,7 @@ import hashlib
 import json
 import time
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel, Field
 
 
@@ -12,6 +12,7 @@ class TextCommand(BaseModel):
     text: str = Field(min_length=1, max_length=500)
     unit_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{16}$')
     speak_reply: bool = False
+    context_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
 
 
 class TextCommands:
@@ -45,12 +46,14 @@ class TextCommands:
         return dict(id=request_id, reply=dict(status='unknown', text=
                     'ADAM restarted before the result was saved. Check the device or timer state; this command will not be repeated.'))
 
-    async def submit(self, options: TextCommand):
+    async def submit(self, options: TextCommand, request: Request):
         text = options.text.strip()
         if not text:
             raise HTTPException(422, 'Enter a command')
-        fingerprint = hashlib.sha256(json.dumps(options.model_dump(exclude={'request_id'}),
-                                               sort_keys=True).encode()).hexdigest()
+        payload = options.model_dump(exclude={'request_id', 'context_id'})
+        if options.context_id:
+            payload['context_id'] = options.context_id
+        fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         with self.fleet.state.db() as db:
             existing = db.execute('SELECT fingerprint FROM text_commands WHERE id=?', (options.request_id,)).fetchone()
         if existing:
@@ -79,6 +82,9 @@ class TextCommands:
         entry = dict(id=options.request_id, text=text, unit_id=options.unit_id,
                      trigger='text', speak_reply=options.speak_reply, started=time.time(),
                      reply=dict(status='ignored', text=''))
+        if options.context_id:
+            owner = hashlib.sha256(request.cookies.get('voice_session', '').encode()).hexdigest()
+            entry['context_key'] = f"web:{owner}:{options.context_id}:{options.unit_id or 'none'}"
         self.entries[entry['id']] = entry
         try:
             self.fleet.dispatch_command(entry, dict(status='done', text=text))

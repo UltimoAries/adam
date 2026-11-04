@@ -47,17 +47,22 @@ the older per-service APIs remain available for existing integrations.
 
 ## Voice behavior
 
-- A new completed wake interaction can generate one short spoken answer.
+- A new completed wake interaction or authorized follow-up can generate one
+  short spoken answer. Signed-in text commands use the same handlers, with
+  optional speaker playback.
   Manual Listen and diagnostic retranscriptions remain recording/review actions.
 - Weather questions go to the existing weather service. Matched home commands
   go to Home Assistant with its capability, expiry and replay checks.
-  Polite prefixes such as "can you" and "could you please" are accepted.
-- The conversational model receives only its system instructions and the current
-  question. It has no Home Assistant token, device inventory or action tools.
+  Polite prefixes such as "can you", "can we", and "could you please" are accepted.
+- The conversational model receives its system instructions, current question,
+  and up to three consecutive successful model exchanges from the same scoped
+  conversation. It has no Home Assistant token, device inventory or action tools.
   Unmatched imperative device commands receive a naming/settings explanation.
 - Answers are limited to 200 spoken characters and use the selected default
-  speech route. Each question is independent; conversation history and live web
-  search are not implemented in this version.
+  speech route. Context expires after 90 seconds or an end phrase; unrelated
+  topics replace actionable context. Live web search is not implemented. See
+  [Follow-up conversation](FOLLOWUP_CONVERSATION.md) for listening windows,
+  topic memory, and the paused experimental interruption investigation.
 - Original recordings and transcripts continue to use the training archive.
   Its review labels remain independent of transcripts and model answers.
 
@@ -68,6 +73,19 @@ share this cooldown, so a failed GPU request does not cause a second GPU timeout
 in the same interaction. Local generation has a 20-second
 deadline; if both models fail, ADAM gives a short unavailable response. The
 bounded queue does not run transcription or home control inside the model worker.
+
+## Home request preview
+
+**Model services → Preview home requests** is an explicit, separate evaluation
+path. It sends a bounded catalog of enabled device identities, names, and
+controls to the configured model and validates a structured proposal. It never
+executes actions, reads live HA states, speaks a reply, or changes live dialogue
+context. There is no automatic model fallback for live home commands.
+
+Previews allow 30 seconds per provider, up to 60 seconds with Pi fallback, and
+use an 8,192-token context. Normal conversation keeps its saved timeouts and
+context limits. General conversation can be disabled while using the explicit
+preview. See [Home Assistant](HOME_ASSISTANT.md) for limits and the preview API.
 
 ## Hosts and storage
 

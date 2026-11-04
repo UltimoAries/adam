@@ -91,7 +91,8 @@ class ConversationTests(unittest.TestCase):
 
     def test_unmatched_device_commands_never_go_to_the_model(self):
         for command in ['Hey Adam, turn on the kitchen', 'Could you please unlock the front door',
-                        'Set bedroom brightness to 10 percent', 'Please close the garage']:
+                        'Set bedroom brightness to 10 percent', 'Please close the garage',
+                        'Can we shut the missing garage door?', 'Shut down the server']:
             self.assertTrue(control_request(command), command)
             self.assertEqual(self.service.answer(command)['status'], 'unsupported')
         self.assertEqual(self.calls, [])

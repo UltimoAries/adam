@@ -42,6 +42,8 @@ class ProcessingSettings(BaseModel):
     api_key: SecretStr = Field(default_factory=lambda:SecretStr(''), max_length=512)
     clear_key: bool = False
     conversation_enabled: bool = True
+    followup_listening: bool = True
+    interrupt_replies: bool = True
     stt_timeout: float = Field(default=3, ge=1, le=30, allow_inf_nan=False)
     conversation_timeout: float = Field(default=6, ge=1, le=30, allow_inf_nan=False)
     cooldown_seconds: int = Field(default=30, ge=5, le=300)
@@ -75,7 +77,7 @@ class ProcessingService:
                 gpu_url=parsed.scheme+'://'+hostname, speech_port=urlsplit(stt.url).port or 8000,
                 conversation_port=urlsplit(chat.remote_url).port or 11434,
                 stt_model=stt.model, conversation_model=chat.remote_model,
-                has_key=bool(stt.api_key), conversation_enabled=chat.enabled,
+                has_key=bool(stt.api_key), conversation_enabled=chat.enabled, followup_listening=chat.followup_listening, interrupt_replies=chat.interrupt_replies,
                 stt_timeout=stt.timeout_seconds, conversation_timeout=chat.remote_timeout_seconds,
                 cooldown_seconds=stt.cooldown_seconds,
                 retry_in_seconds=self.failover.remaining(),
@@ -94,7 +96,7 @@ class ProcessingService:
                 api_key=key, timeout_seconds=options.stt_timeout, cooldown_seconds=options.cooldown_seconds)
             speech = ServiceSettings(stt=stt, tts=old.tts.model_copy(update={'mode':'local'}))
             chat = ConversationSettings.model_validate(dict(self.conversation.options.model_dump(),
-                mode=options.mode, enabled=options.conversation_enabled,
+                mode=options.mode, enabled=options.conversation_enabled, followup_listening=options.followup_listening, interrupt_replies=options.interrupt_replies,
                 remote_url=options.gpu_url+':'+str(options.conversation_port),
                 remote_model=options.conversation_model, remote_timeout_seconds=options.conversation_timeout,
                 cooldown_seconds=options.cooldown_seconds))

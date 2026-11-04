@@ -9,6 +9,7 @@
 #include "wake.h"
 #include "preroll.h"
 #include "intercom.h"
+#include "barge.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +36,9 @@ static int64_t capture_started;
 static int64_t last_contact;
 static state_t state;
 static char wake_model[97];
+static bool reply_interrupted;
+static voice_followup_t followup_gate;
+static char followup_page[33],capture_followup_page[33];
 static headend_panel_t panel_data;
 static char dismissed_ids[8][17];
 static unsigned dismissed_count;
@@ -240,58 +244,83 @@ static bool request(const config_t *cfg,const char *path,const char *body,char *
     esp_http_client_cleanup(handle);
     return ok;
 }
+bool headend_followup_waiting(void)
+{ portENTER_CRITICAL(&guard); bool value=followup_gate.remaining>0; portEXIT_CRITICAL(&guard); return value; }
 bool headend_listening(void)
-{ portENTER_CRITICAL(&guard); bool value=buffer.capturing; portEXIT_CRITICAL(&guard); return value; }
+{ portENTER_CRITICAL(&guard); bool value=buffer.capturing || followup_gate.remaining; portEXIT_CRITICAL(&guard); return value; }
 bool headend_busy(void)
-{ portENTER_CRITICAL(&guard); bool value=requested || uploading || buffer.session || paging; portEXIT_CRITICAL(&guard); return value || intercom_active(); }
+{ portENTER_CRITICAL(&guard); bool value=requested || uploading || buffer.session || paging || followup_gate.remaining; portEXIT_CRITICAL(&guard); return value || intercom_active(); }
 const char *headend_state(void)
 {
+    if (headend_followup_waiting()) return "FOLLOWUP";
     static const char *names[]={"UNPAIRED","OFFLINE","READY","STARTING","LISTENING","PROCESSING","PAGING","ERROR"};
     portENTER_CRITICAL(&guard); state_t value=state; portEXIT_CRITICAL(&guard);
     return names[value];
 }
-bool headend_start(const char *model)
+static bool start_capture(const char *model,bool followup)
 {
+    if (model && barge_ready()) return barge_interrupt();
+    if (barge_active()) return false;
     if (intercom_active()) { if (model) intercom_end();return model!=NULL; }
     if (!storage || !worker || !wifi_ready() || mic_recording() || audio_is_playing() || audio_clip_busy()) return false;
     if (model && !safe_id(model,96,false)) return false;
     portENTER_CRITICAL(&guard);
     bool ok=configured && !requested && !uploading && !buffer.session && !paging && last_contact>0 && esp_timer_get_time()-last_contact<10000000;
-    if (ok) ok=model?voice_buffer_begin_auto(&buffer):voice_buffer_begin(&buffer);
+    if (followup) ok=ok && followup_gate.remaining;
+    if (ok) ok=followup?voice_buffer_begin_followup(&buffer):model?voice_buffer_begin_auto(&buffer):voice_buffer_begin(&buffer);
     if (ok) {
         snprintf(wake_model,sizeof(wake_model),"%s",model?model:"");
+        snprintf(capture_followup_page,sizeof(capture_followup_page),"%s",followup?followup_page:"");
+        followup_gate.remaining=0;
         requested=true; cancelled=false; sent=0;capture_started=esp_timer_get_time();state=LISTENING;
     }
     portEXIT_CRITICAL(&guard);
     if (ok) xTaskNotifyGive(worker);
     return ok;
 }
+bool headend_start(const char *model) { return start_capture(model,false); }
 void headend_stop(void)
 {
+    barge_cancel();
     if (intercom_active()) intercom_end();
     portENTER_CRITICAL(&guard);
     bool stop_audio=paging || uploading || requested;
-    cancelled=true;requested=false;voice_buffer_end(&buffer);
+    cancelled=true;requested=false;followup_gate.remaining=0;voice_buffer_end(&buffer);
     if (!uploading && !paging) state=configured?READY:UNPAIRED;
     portEXIT_CRITICAL(&guard);
     if (stop_audio) audio_stop();
 }
-void headend_feed(const int16_t *stereo,unsigned frames)
+void headend_feed(const int16_t *stereo,unsigned frames,bool vad_ready,bool speech)
 {
     if (!storage || frames!=VOICE_BLOCK_SAMPLES) return;
     voice_block_t block;
     for (unsigned i=0;i<VOICE_BLOCK_SAMPLES;++i) block.pcm[i]=stereo[i*2];
     bool cache=!intercom_active() && !audio_is_playing() && !audio_clip_busy() && !mic_recording();
     portENTER_CRITICAL(&guard);
+    buffer.use_vad=vad_ready;buffer.vad_speech=speech;
     voice_buffer_feed(&buffer,block.pcm,cache);
+    bool follow=false;
+    if (followup_gate.remaining) {
+        if (!cache || !wake_enabled()) followup_gate.remaining=0;
+        else follow=voice_followup_feed(&followup_gate,buffer.energies[(buffer.head+VOICE_HISTORY_BLOCKS-1)%VOICE_HISTORY_BLOCKS],vad_ready && speech);
+    }
+    portEXIT_CRITICAL(&guard);
+    if (follow) start_capture(NULL,true);
+}
+void headend_barge_feed(const int16_t *mono)
+{
+    if (!storage) return;
+    portENTER_CRITICAL(&guard);
+    if (!buffer.session) voice_buffer_feed(&buffer,mono,true);
     portEXIT_CRITICAL(&guard);
 }
 void headend_audio_gap(void)
 {
+    barge_cancel();
     if (intercom_active()) intercom_end();
     if (!storage) return;
     portENTER_CRITICAL(&guard);
-    ++input_gaps;voice_buffer_gap(&buffer);
+    ++input_gaps;followup_gate.remaining=0;voice_buffer_gap(&buffer);
     portEXIT_CRITICAL(&guard);
 }
 static bool upload(const config_t *cfg,const char *model)
@@ -303,8 +332,9 @@ static bool upload(const config_t *cfg,const char *model)
     bool stopped=cancelled,automatic=buffer.automatic;unsigned prefix=buffer.prefix,limit=buffer.limit;int64_t start=capture_started;
     portEXIT_CRITICAL(&guard);
     if (stopped) return false;
-    unsigned cue=audio_play_listen_cue();
-    if (!cue) return false;
+    bool followup=capture_followup_page[0]!=0;
+    unsigned cue=followup?0:audio_play_listen_cue();
+    if (!followup && !cue) return false;
     portENTER_CRITICAL(&guard); stopped=cancelled || buffer.failed; portEXIT_CRITICAL(&guard);
     if (stopped) return false;
     esp_http_client_handle_t handle=client(cfg,"audio",HTTP_METHOD_POST);
@@ -326,7 +356,8 @@ static bool upload(const config_t *cfg,const char *model)
     esp_http_client_set_header(handle,"X-Audio-Frames",frame_header);
     esp_http_client_set_header(handle,"X-Audio-Preroll-Ms",prefix_header);
     if (automatic) esp_http_client_set_header(handle,"X-Audio-Mode","silence-v1");
-    esp_http_client_set_header(handle,"X-Trigger",model[0]?"wake":"touch");
+    esp_http_client_set_header(handle,"X-Trigger",followup?"followup":model[0]?"wake":"touch");
+    if (followup) esp_http_client_set_header(handle,"X-Followup-Page",capture_followup_page);
     if (model[0]) esp_http_client_set_header(handle,"X-Wake-Model",model);
     bool ok=esp_http_client_open(handle,automatic?-1:(int)(packets*644))==ESP_OK;
     // Connect during the cue, then preserve the existing playback exclusion.
@@ -334,7 +365,7 @@ static bool upload(const config_t *cfg,const char *model)
         if (esp_timer_get_time()-start>12000000) { audio_stop();ok=false;break; }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
-    ok=ok && audio_message_delivered(cue);
+    ok=ok && (followup || audio_message_delivered(cue));
     if (ok && (mic_recording() || audio_is_playing())) ok=false;
     unsigned sequence=0;
     for (;sequence<packets && ok;++sequence) {
@@ -378,7 +409,7 @@ static bool ack(const config_t *cfg,const char *id,const char *status)
     snprintf(body,sizeof(body),"{\"status\":\"%s\"}",status);
     return request(cfg,path,body,response,sizeof(response));
 }
-static bool play_page(const config_t *cfg,const char *id,unsigned length)
+static bool play_page(const config_t *cfg,const char *id,unsigned length,bool interruptible)
 {
     if (!safe_id(id,32,true) || !length || length>480000 || length%2) return false;
     if (mic_recording() || audio_is_playing() || audio_clip_busy()) return false;
@@ -397,18 +428,20 @@ static bool play_page(const config_t *cfg,const char *id,unsigned length)
     if (handle) esp_http_client_cleanup(handle);
     portENTER_CRITICAL(&guard); bool stopped=cancelled; portEXIT_CRITICAL(&guard);
     ok=ok && !stopped;
-    unsigned playback=0;
+    unsigned playback=0;reply_interrupted=false;
     if (ok) ok=ack(cfg,id,"playing");
     portENTER_CRITICAL(&guard); stopped=cancelled; portEXIT_CRITICAL(&guard);
+    bool monitor=ok && !stopped && interruptible && barge_begin();
     if (ok && !stopped) { playback=audio_play_message(pcm,length/2); ok=playback!=0; }
     else ok=false;
     if (ok) {
         while (audio_clip_busy()) vTaskDelay(pdMS_TO_TICKS(25));
         ok=audio_message_delivered(playback);
     }
+    if (monitor) reply_interrupted=barge_end();
     free(pcm);
-    ack(cfg,id,ok?"delivered":"failed");
-    return ok;
+    bool confirmed=ack(cfg,id,reply_interrupted?"interrupted":ok?"delivered":"failed");
+    return ok && confirmed;
 }
 static void task(void *unused)
 {
@@ -438,7 +471,7 @@ static void task(void *unused)
             }
             portEXIT_CRITICAL(&guard);
             char path[440];
-            snprintf(path,sizeof(path),"poll?firmware=" ADAM_FIRMWARE_ID "&intercom=1&wake_model=%s&busy=%d%s%s",wake_model_id(),
+            snprintf(path,sizeof(path),"poll?firmware=" ADAM_FIRMWARE_ID "&intercom=1&followup=1&followup_version=2&wake_model=%s&busy=%d%s%s",wake_model_id(),
                      headend_busy() || mic_recording() || audio_is_playing() || audio_clip_busy(),
                      dismissed[0]?"&dismissed=":"",dismissed);
             bool ok=request(&cfg,path,NULL,poll_response,sizeof(poll_response));
@@ -466,14 +499,25 @@ static void task(void *unused)
                     if (cJSON_IsString(id) && cJSON_IsNumber(bytes) && bytes->valuedouble>0 && bytes->valuedouble<=480000) {
                         portENTER_CRITICAL(&guard);
                         bool reserve=!requested && !uploading && !buffer.session;
-                        if (reserve) { paging=true;cancelled=false;state=PAGING; }
+                        if (reserve) { followup_gate.remaining=0;paging=true;cancelled=false;state=PAGING; }
                         portEXIT_CRITICAL(&guard);
                         // A wake can arrive while the poll is in flight. Its
                         // capture wins; the server's offer lease will retry.
                         if (reserve) {
-                            bool played=play_page(&cfg,id->valuestring,(unsigned)bytes->valuedouble);
-                            portENTER_CRITICAL(&guard); paging=false; if (played) ++pages_done; else ++failures; portEXIT_CRITICAL(&guard);
-                            set_state(played?READY:ERROR);
+                            bool played=play_page(&cfg,id->valuestring,(unsigned)bytes->valuedouble,
+                                cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root,"interruptible")));
+                            portENTER_CRITICAL(&guard); paging=false; if (played) ++pages_done; else if (!reply_interrupted) ++failures; portEXIT_CRITICAL(&guard);
+                            const cJSON *follow=cJSON_GetObjectItemCaseSensitive(root,"followup_seconds");
+                            portENTER_CRITICAL(&guard);
+                            if (played && !cancelled && !requested && !buffer.session && wake_enabled() &&
+                                    cJSON_IsNumber(follow) && follow->valueint>=5 && follow->valueint<=12) {
+                                snprintf(followup_page,sizeof(followup_page),"%.32s",id->valuestring);
+                                voice_buffer_gap(&buffer);
+                                voice_followup_arm(&followup_gate,buffer.threshold,follow->valueint);
+                            }
+                            portEXIT_CRITICAL(&guard);
+                            set_state(played || reply_interrupted?READY:ERROR);
+                            if (reply_interrupted) headend_start(wake_model_id());
                         }
                     }
                 } else if (!headend_busy()) set_state(READY);
@@ -483,12 +527,13 @@ static void task(void *unused)
         portENTER_CRITICAL(&guard); stack_min=uxTaskGetStackHighWaterMark(NULL); portEXIT_CRITICAL(&guard);
         // Faster delivery pickup following a question; normal idle polling
         // stays at 1.5 s to avoid multiplying background fleet traffic.
-        ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(capture_started && esp_timer_get_time()-capture_started<30000000?250:1500));
+        ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS((headend_followup_waiting() || (capture_started && esp_timer_get_time()-capture_started<30000000))?250:1500));
     }
 }
 void headend_init(void)
 {
     intercom_init();
+    barge_init();
     nvs_handle_t handle;
     if (nvs_open("headend",NVS_READONLY,&handle)==ESP_OK) {
         size_t url=sizeof(configuration.url),unit=sizeof(configuration.unit),token=sizeof(configuration.token);
@@ -528,6 +573,7 @@ bool headend_configure(const char *url,const char *unit_id,const char *token)
 void headend_status(void)
 {
     intercom_status();
+    barge_status();
     portENTER_CRITICAL(&guard);
     unsigned bytes=sent,errors=failures,done=completed,pages=pages_done,stack=stack_min,cancel_count=aborted;
     bool paired=configured,active=buffer.capturing,bad=buffer.failed;

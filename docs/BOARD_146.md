@@ -1,7 +1,8 @@
 # Waveshare ESP32-S3-Touch-LCD-1.46
 
-ADAM's separate `v31-146` firmware target supports the non-suffixed 1.46-inch
-board. The original 1.85C BOX V2 remains the default build target (`v31-185`).
+ADAM's separate `v33-146` source firmware target supports the non-suffixed 1.46-inch
+board. The original 1.85C BOX V2 remains the default build target (`v33-185`).
+Installed units may run older firmware; the original Micro pilot runs v31.
 Do not flash either target onto the other hardware: GPIO15 is an amplifier
 enable on the 1.85C V2 but a microphone clock on the 1.46.
 
@@ -45,6 +46,13 @@ supported operating mode. No battery-runtime claim is made.
 
 ## Build and restore
 
+The dashboard's USB pairing option does **not** install firmware. It only sends
+the head-end address and device key to an already running ADAM application, using
+the USB port on the head-end computer. Opening the Pi dashboard on a laptop does
+not give the Pi access to that laptop's USB ports. A fresh factory unit needs the
+board-specific firmware installed locally first. See
+[USB setup and pairing](HEADEND_NETWORK.md#usb-setup-and-pairing) for the distinction.
+
 ```powershell
 # Separate sdkconfig.146 and build146 outputs; original build stays separate.
 .\tools\idf146.ps1 build
@@ -53,6 +61,11 @@ supported operating mode. No battery-runtime claim is made.
 # Original 1.85C BOX V2 only:
 .\tools\idf.ps1 build
 ```
+
+Both wrappers explicitly accept `-p` / `-Port` and forward it as `--port` to
+ESP-IDF. This avoids PowerShell consuming `-p` as its common `PipelineVariable`
+option and silently letting ESP-IDF probe other serial ports. Run
+`tools/test_idf_args.ps1` to check argument forwarding without touching hardware.
 
 Before the first flash, read the board's complete original flash with esptool
 and save its SHA-256 under ignored local artifacts. Keep backups private:

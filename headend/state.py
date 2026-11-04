@@ -121,7 +121,7 @@ class State:
         db.execute("UPDATE pages SET state='queued' WHERE state='offered' AND lease<? AND expires>?",(now,now))
         db.execute("UPDATE pages SET state='failed',detail='Playback confirmation timed out',pcm=NULL WHERE state='playing' AND lease<?",(now,))
         # Keep a bounded history without retaining terminal audio blobs.
-        db.execute("DELETE FROM pages WHERE id IN (SELECT id FROM pages WHERE state IN ('delivered','expired','failed','cancelled') ORDER BY created DESC LIMIT -1 OFFSET 200)")
+        db.execute("DELETE FROM pages WHERE id IN (SELECT id FROM pages WHERE state IN ('delivered','expired','failed','cancelled','interrupted') ORDER BY created DESC LIMIT -1 OFFSET 200)")
 
     def enqueue(self, unit_ids, pcm, kind, text=''):
         if kind not in ('text','voice') or not 0 < len(pcm) <= 480000 or len(pcm)%2:
@@ -177,10 +177,10 @@ class State:
                 raise KeyError('Page not found')
             if row[0] == status:
                 return
-            if (row[0],status) not in {('offered','playing'),('playing','delivered'),('playing','failed'),('offered','failed')}:
+            if (row[0],status) not in {('offered','playing'),('playing','delivered'),('playing','interrupted'),('playing','failed'),('offered','failed')}:
                 raise ValueError('Invalid page state transition')
             db.execute('UPDATE pages SET state=?,detail=?,lease=?,pcm=CASE WHEN ? THEN NULL ELSE pcm END WHERE id=?',
-                       (status,detail[:160],self.clock()+30,status in ('delivered','failed'),page_id))
+                       (status,detail[:160],self.clock()+30,status in ('delivered','failed','interrupted'),page_id))
 
     def cancel_page(self, page_id):
         with self.db() as db:

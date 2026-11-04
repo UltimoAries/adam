@@ -165,6 +165,76 @@ the action. A full diagnostic clip archive does not block live transcription.
 
 ## API and validation
 
+### Natural phrasing and model interpretation preview
+
+Device requests accept polite prefixes such as `Can we`, `Could you please`,
+and `Would we`. Percentage follow-ups such as `Can we set it to 100%?` retain
+the previous device only within the existing conversation scope and expiry.
+Negated requests, ambiguous devices, unsupported controls and out-of-range
+values still cannot operate a device. `Backyard` and `back yard` have identical
+name matching; two devices with those equivalent names remain ambiguous.
+
+`Shut the garage door` is an action synonym for `Close the garage door`,
+including polite and compound requests. Both resolve the same exact enabled
+device and its supported `close` control. `Is the garage door shut?` is a
+read-only status question. The alias does not turn closing into locking,
+interpret `shut off`/`shut down` as closing, or bypass negation and capability
+checks. Unmatched `shut` commands do not fall through to conversational chat.
+
+Within a compound request, a singular reference can use a uniquely named
+device from an earlier clause: `Turn on the living room light and set it to
+30%`. If several different devices have already been mentioned, name the
+target explicitly. These references never borrow context from an earlier
+conversation. Adjacent `on` and positive brightness requests for one light
+are combined into one `turn_on` call with `brightness_pct`, so there is no
+intermediate on command. Both clauses still count toward the four-clause
+limit. Unsupported dimming, out-of-range values, `on` plus zero brightness,
+opposing on/off actions, and conflicting brightness values reject the entire
+plan before execution. The combined result retains the device identity for
+the next spoken follow-up.
+
+`Now which lights are on?` and `Did I leave the lights on?` use live Home
+Assistant status. `Yeah, check` or `Check again` rechecks the recent status
+topic. Without recent context, ADAM asks what to check. This does not replay
+an earlier control command or infer a historical light state.
+
+After a successful light summary, `Can we turn those off?`, `Turn them off`,
+and `Switch off those lights` target the exact lights reported **on** in that
+immediately preceding summary, within the same speaker/browser context and
+90-second expiry. The group never expands to lights switched on afterward.
+Up to four lights can be controlled; larger groups, unavailable members,
+changed settings or missing targets require a fresh question or explicit
+names. Singular references such as `that one` still require one clear target.
+Every target is validated before the first command, then the existing state
+readback, settings checks and durable replay protection apply. As with other
+multi-device commands, a network failure after an earlier action can leave a
+partially completed group; commands are never automatically retried.
+
+The **Model services → Preview home requests** panel evaluates model-assisted
+interpretation separately from live voice/text dispatch. Enter a request and,
+optionally, select the previous device to test `it`/`that` references. The
+preview sends only enabled/present device identities, spoken names and bounded
+control metadata to the configured GPU/Pi model. It uses Ollama structured
+output and validates returned identities, controls, value bounds and plan
+shape. The model receives neither HA credentials nor live device states.
+
+The preview **never executes a command, reads live HA states, speaks a reply,
+or changes live dialogue context**. There is no execute flag or approval
+button. A capability-valid proposal can still misunderstand intent; review
+the displayed device/action/value before considering future automation.
+General conversation may be disabled while using this explicit preview.
+Existing model concurrency limits and GPU/Pi failure cooldown apply. Explicit
+previews allow 30 seconds per model (up to 60 seconds with Pi fallback);
+normal conversation keeps its saved, shorter timeouts.
+The initial preview supports at most 40 devices, a 16,000-character input
+catalog, and four proposed steps; oversized catalogs are rejected intact.
+Thermostat validation uses the cached inventory, not a new live read.
+
+Live voice and text commands continue to use deterministic routing. Enabling
+automatic model-assisted execution is a separate future change. See
+[Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs)
+for the JSON-schema transport contract.
+
 All routes require the Adam administrator session and existing request-origin checks.
 
 | Route | Purpose |
@@ -176,6 +246,7 @@ All routes require the Adam administrator session and existing request-origin ch
 | PATCH `/api/home-assistant/inventory/{entity_id}` | Save local name, aliases, default-name recognition, import/enabled flags |
 | POST `/api/home-assistant/inventory/{entity_id}/actions` | Execute validated `{action, value?}` for that exact entity |
 | POST `/api/home-assistant/commands` | Execute `{text, unit_id?}` through the spoken-command resolver |
+| POST `/api/home-assistant/intent-preview` | Preview `{text, context_entity_id?}`; always returns `executed: false`, with no device effects |
 | GET `/api/home-assistant/entities` | Legacy switch/light discovery endpoint |
 
 Validation on October 30, 2026: 100 head-end tests passed, including inventory

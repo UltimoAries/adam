@@ -20,6 +20,15 @@ Keep the training archive capped (10 GiB default cap) and ensure sufficient free
 disk space. Archive limits pause recording collection without interrupting live
 voice commands. Docker container logs rotate automatically at three 10 MB files.
 
+Head-end updates include the natural Home Assistant command handlers and the
+**Preview home requests** panel on `/models`. Model preview never executes
+actions; ordinary home commands continue through deterministic validation.
+Wake-free listening also requires capable speaker firmware; the current source
+targets are `v33-185` and `v33-146`. Rebuilding the Pi container does not flash
+speakers. See [Home Assistant commands](../../docs/HOME_ASSISTANT.md) and
+[follow-up conversation](../../docs/FOLLOWUP_CONVERSATION.md). Reply interruption
+remains experimental and its investigation is paused.
+
 ---
 
 ## Option A: Fresh installation

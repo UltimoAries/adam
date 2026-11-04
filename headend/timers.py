@@ -538,7 +538,7 @@ class TimerService:
         return dict(status='ignored', text='')
 
     def submit(self, entry: dict, job: dict) -> bool:
-        if self.closed or job.get('status') != 'done' or entry.get('trigger') not in ('wake', 'text'):
+        if self.closed or job.get('status') != 'done' or entry.get('trigger') not in ('wake', 'followup', 'text'):
             return False
         if not self.matches_utterance(job.get('text', ''), entry.get('unit_id')):
             return False

@@ -103,7 +103,7 @@ static bool write_block(void)
         ++write_errors; last_error=err==ESP_OK?ESP_ERR_INVALID_SIZE:err;
     } else {
         ++blocks;
-        if (stream_requested) {
+        { // Retain post-volume output for both intercom and reply AEC.
             for (unsigned i=0;i<FRAMES;++i) reference[reference_position%8][i]=(int16_t)(samples[i*2]/65536);
             ++reference_position;
         }

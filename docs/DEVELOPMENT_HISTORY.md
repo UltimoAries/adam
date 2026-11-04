@@ -1,4 +1,62 @@
-# Hardware bring-up and early development history (v1–v13)
+# Development history and change log
+
+## November 3, 2026 — Natural Home Assistant commands and model preview
+
+- Expanded deterministic parsing for polite requests such as "Can we set that
+  to 30%?", percentage follow-ups, and equivalent "backyard"/"back yard" names.
+  Conflicting names and negated controls still require clarification.
+- Added current-state questions such as "Did I leave the lights on?" and
+  context-aware "Yeah, check" / "Check again". These refresh status without
+  replaying actions or claiming knowledge of past states.
+- Fixed three-device summaries to list all three names. "Can we turn those
+  off?" now controls only the lights reported on in the preceding summary,
+  within 90 seconds and the same conversation. The group is capped at four;
+  unavailable targets, changed settings, and stale references block execution.
+- Added unambiguous references within compound commands. "Turn on the living
+  room light and set it to 30%" combines into one brightness request. Conflicting
+  actions and unsupported values reject the complete plan before commands run.
+- Added "shut" as a synonym for the supported `close` control, including polite
+  and compound phrasing. "Is the garage door shut?" remains a status read.
+- Added **Preview home requests** on Model services and the authenticated
+  `/api/home-assistant/intent-preview` endpoint. The model proposes bounded,
+  structured intents against enabled inventory; the preview never executes,
+  reads live HA states, speaks, or changes dialogue context. Live voice/text
+  dispatch remains deterministic. Preview requests have a separate 30-second
+  deadline per provider; normal conversation timeouts are unchanged.
+- Corrected dashboard labels for authorized follow-up recordings. Improved
+  USB pairing errors to explain that USB access belongs to the head-end host
+  and pairing requires already-flashed firmware.
+
+Validation for this update: all 268 head-end tests, both firmware target builds,
+JavaScript syntax checks for changed scripts, and the PowerShell wrapper argument
+tests passed. Head-end changes were deployed to the Pi and readiness checked.
+Regression tests use synthetic inventory and mocked services; deployment verification did
+not operate household devices. See [Home Assistant](HOME_ASSISTANT.md),
+[status questions](STATUS_QUESTIONS.md), and [conversation](CONVERSATION.md).
+
+## November 2, 2026 — Follow-up listening, status, and v33 firmware
+
+- Added short follow-up listening windows (5, 8, or 12 seconds), single-use
+  same-speaker grants after delivered replies, speech/noise gating, bounded
+  capture, end phrases, and touch cancellation. Manual Listen and diagnostic
+  captures remain unable to dispatch commands.
+- Added 90-second context isolated by speaker or authenticated browser session,
+  tab, and selected speaker. Weather carries day/city, model chat keeps up to
+  three recent exchanges, and contextual device corrections retain identity
+  and existing capability/replay checks.
+- Added read-only home, speaker, and model status with live rechecks and
+  evidence-based availability explanations. Browser replies expose status
+  details without inventing causes for outages.
+- Added experimental reply interruption using local echo cancellation and
+  explicit, bounded USB reply diagnostics. Normal follow-ups were confirmed
+  working; interruption remained unreliable. Investigation is paused at the
+  user's request, with evidence and next steps in
+  [Follow-up conversation](FOLLOWUP_CONVERSATION.md).
+- Added `v33-185` and `v33-146` source targets and fixed PowerShell build wrappers
+  to forward an explicitly selected serial port. Updating the head-end does
+  not flash installed speakers.
+
+## Early hardware bring-up (v1–v13)
 
 > [!NOTE]
 > This document records the initial October 2026 hardware bring-up milestones (**Firmware v1–v13**), from probing the ST77916 QSPI round LCD and CST816 touch controller through early eye/ear visuals and stock `Hey Jarvis` testing. For current firmware behavior — including the illustrated sky/weather home screen, **Hey Adam** (`hey_adam-20261030-c60f0456`), Home Assistant integration, and Raspberry Pi / GPU LLM routing — see [`README.md`](../README.md), [`HEADEND_NETWORK.md`](HEADEND_NETWORK.md), [`SPACE_PANEL.md`](SPACE_PANEL.md), and [`TOUCH_UI.md`](TOUCH_UI.md).

@@ -33,6 +33,33 @@ class FleetTests(unittest.TestCase):
     def headers(self,unit=None):
         return {'Authorization':'Bearer '+(unit or self.unit)['token']}
 
+    def test_usb_pairing_only_provisions_headend_bridge(self):
+        response = self.client.post('/api/units/pair', json={
+            'name':'New speaker', 'url':'http://192.168.1.50:8765'})
+        self.assertEqual(response.status_code, 201, response.text)
+        bridge = self.app.state.fleet.bridge
+        self.assertEqual(len(bridge.calls), 1)
+        operation, payload = bridge.calls[0]
+        self.assertEqual(operation, 'provision')
+        self.assertEqual(payload['id'], response.json()['id'])
+        self.assertTrue(self.app.state.fleet.state.unit_auth(payload['id'], payload['token']))
+        self.assertNotIn('token', response.json())
+
+    def test_usb_pairing_failure_explains_host_and_firmware_without_leaking_key(self):
+        from unittest.mock import patch
+        from .device import DeviceError
+        before = self.client.get('/api/fleet').json()['units']
+        def fail(operation, payload):
+            raise DeviceError('ERR '+payload['token'])
+        with patch.object(self.app.state.fleet.bridge, 'run', side_effect=fail) as run:
+            response = self.client.post('/api/units/pair', json={'name':'New speaker'})
+        self.assertEqual(response.status_code, 503)
+        detail = response.json()['detail']
+        self.assertIn('head-end computer', detail)
+        self.assertIn('cannot flash firmware', detail)
+        self.assertNotIn(run.call_args.args[1]['token'], detail)
+        self.assertEqual(self.client.get('/api/fleet').json()['units'], before)
+
     def poll(self,unit=None):
         unit = unit or self.unit
         return self.client.get(f"/api/units/{unit['id']}/poll",headers=self.headers(unit))

@@ -4,6 +4,9 @@
   let units = [], signature = '', pending = null, timer = null, generation = 0;
   const saved = key => { try { return sessionStorage.getItem(key); } catch { return null; } };
   const save = (key, value) => { try { value == null ? sessionStorage.removeItem(key) : sessionStorage.setItem(key, value); } catch {} };
+  const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2,'0')).join('');
+  let contextId = saved('adam.commandContext') || randomId();
+  save('adam.commandContext', contextId);
   const status = text => { node('commandStatus').textContent = text; };
   function controls() {
     const unit = units.find(u => u.id === node('commandUnit').value);
@@ -34,6 +37,13 @@
     item.append(heading, answer);
     if (reply.delivery_error) { const note = document.createElement('p'); note.textContent = reply.delivery_error; item.append(note); }
     if (reply.error && reply.text) { const note = document.createElement('p'); note.textContent = reply.error; item.append(note); }
+    if (reply.details?.length) {
+      const details = document.createElement('details'), summary = document.createElement('summary'), list = document.createElement('ul');
+      summary.textContent = 'Status details'; details.append(summary);
+      for (const text of reply.details.slice(0,100)) { const row = document.createElement('li'); row.textContent = text; list.append(row); }
+      details.append(list); item.append(details);
+    }
+    if (reply.checked_at) { const checked = document.createElement('small'); checked.textContent = 'Checked ' + new Date(reply.checked_at*1000).toLocaleTimeString(); item.append(checked); }
     node('commandReplies').prepend(item);
     while (node('commandReplies').children.length > 10) node('commandReplies').lastChild.remove();
     pending = null; save('adam.pendingCommand', null); node('commandRetry').hidden = true;
@@ -63,7 +73,7 @@
     // getRandomValues works on LAN HTTP as well as HTTPS; randomUUID need not.
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     pending = {request_id:Array.from(bytes, b => b.toString(16).padStart(2,'0')).join(''), text,
-      unit_id:node('commandUnit').value || null, speak_reply:node('commandSpeak').checked};
+      context_id:contextId, unit_id:node('commandUnit').value || null, speak_reply:node('commandSpeak').checked};
     save('adam.pendingCommand', JSON.stringify(pending)); controls(); status('Sending…'); check(true);
   });
   node('commandRetry').onclick = () => check(true);
@@ -85,6 +95,7 @@
     controls();
   };
   window.clearCommands = () => {
+    contextId = randomId(); save('adam.commandContext', contextId);
     generation++; clearTimeout(timer); pending = null; save('adam.pendingCommand', null);
     node('commandReplies').replaceChildren(); node('commandText').value = ''; node('commandRetry').hidden = true; status(''); controls();
   };

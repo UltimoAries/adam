@@ -52,7 +52,8 @@ BINARY_CLASS_STATES = {
 
 
 def normalized(text):
-    return re.sub(r'[^\w]+', ' ', text.casefold()).strip()
+    words = re.sub(r'[^\w]+', ' ', text.casefold()).strip()
+    return re.sub(r'\bbackyard\b', 'back yard', words)
 
 
 def attributes_for_inventory(attributes):
@@ -190,13 +191,25 @@ def format_entity_state(entity_id: str, name: str, current: str, attrs: dict) ->
     return detail
 
 
+def status_words(text: str) -> str:
+    """Normalize polite/current-status phrasing without discarding action clauses."""
+    words = normalized(text)
+    words = re.sub(r'^(?:(?:hey|okay|ok) )?(?:adam|jarvis)\b *', '', words)
+    words = re.sub(r'^(?:please )?(?:can|could|would) (?:you|we) (?:please )?', '', words)
+    words = re.sub(r'^(?:please )?(?:tell me|show me|let me know) ', '', words)
+    words = re.sub(r'^please ', '', words)
+    words = re.sub(r'^now ', '', words)
+    words = re.sub(r'\bwhat s\b', 'what is', words)
+    words = re.sub(r'\b(?:currently|right now|at the moment)\b', '', words)
+    words = re.sub(r' please$', '', words)
+    return ' '.join(words.split())
+
+
 def summary_intent(text: str) -> str | None:
     """Match read-only multi-entity status questions (doors/windows, locks, lights, leaks)."""
     if not isinstance(text, str) or len(text) > 300:
         return None
-    cleaned = re.sub(r'^\s*(?:hey|okay|ok)[ ,]+(?:jarvis|adam)\b[\s,.!?]*', '', text, flags=re.I)
-    cleaned = re.sub(r'^\s*(?:please[ ,]+)?(?:can|could|would)\s+you[ ,]+(?:please[ ,]+)?', '', cleaned, flags=re.I)
-    lower = normalized(cleaned)
+    lower = status_words(text)
     if re.search(r'\b(?:do not|don t|dont|never|turn|switch|set|dim)\b', lower):
         return None
     if re.fullmatch(
@@ -218,8 +231,9 @@ def summary_intent(text: str) -> str | None:
     ):
         return 'locks'
     if re.fullmatch(
-        r'(?:are any|which|what|how many) (?:of the )?lights? (?:are )?on|'
+        r'(?:are any|which|what|how many) (?:(?:of )?the )?lights? (?:are )?on|'
         r'are all (?:of )?(?:the )?lights? off|'
+        r'(?:did|have) (?:i|we) (?:leave|left) (?:any |any of the |the )?lights? on|'
         r'check (?:all )?(?:the )?lights?',
         lower,
     ):
@@ -275,10 +289,10 @@ _PLURAL_SUFFIXES = {
 _SHARED_NOUNS = set(_PLURAL_SUFFIXES)
 
 _HA_CLAUSE_STARTER = (
-    r'(?:(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?)'
+    r'(?:(?:please\s+)?(?:(?:can|could|would)\s+(?:you|we)\s+)?(?:please\s+)?)'
     r'(?:'
     r'(?:turn|switch)\s+(?:on\b|off\b|the\b|[a-z0-9])|'
-    r'(?:open|close|stop|lock|unlock|play|pause|activate|run|press|set|dim)\s+(?:the\b|[a-z0-9])|'
+    r'(?:open|close|shut|stop|lock|unlock|play|pause|activate|run|press|set|dim)\s+(?:the\b|[a-z0-9])|'
     r'(?:is|are)\s+(?:any\b|all\b|the\b|there\b|[a-z0-9])|'
     r'(?:what\s+is|what\s*\'?s|whats|which|how\s+(?:many|warm|hot|cold|cool|chilly|humid)|check|read)\b'
     r')'
@@ -291,15 +305,16 @@ def has_negation(text: str) -> bool:
     lower = normalized(text)
     return bool(
         re.search(r'\b(?:do not|don t|dont|never)\b', lower)
-        or re.search(r'\b(?:can|could|would) you (?:please )?not\b', lower)
+        or re.search(r'\b(?:can|could|would) (?:you|we) (?:please )?not\b', lower)
         or re.search(r'(?:\A|\band )not\b', lower)
     )
 
 
 def strip_wake_and_polite(text: str) -> str:
     cleaned = re.sub(r'^\s*(?:hey|okay|ok)[ ,]+(?:jarvis|adam)\b[\s,.!?]*', '', text or '', flags=re.I)
-    cleaned = re.sub(r'^\s*(?:please[ ,]+)?(?:can|could|would)\s+you[ ,]+(?:please[ ,]+)?', '', cleaned, flags=re.I)
+    cleaned = re.sub(r'^\s*(?:please[ ,]+)?(?:can|could|would)\s+(?:you|we)[ ,]+(?:please[ ,]+)?', '', cleaned, flags=re.I)
     cleaned = cleaned.strip().rstrip('.!?').strip()
+    cleaned = re.sub(r'\bbackyard\b', 'back yard', cleaned, flags=re.I)
     return re.sub(r'^please\s+|\s+please$', '', cleaned, flags=re.I).strip()
 
 
@@ -307,7 +322,7 @@ def is_ha_control_clause(text: str) -> bool:
     cleaned = strip_wake_and_polite(text)
     return bool(
         re.match(
-            r'^(?:turn|switch|open|close|stop|lock|unlock|play|pause|activate|run|press|set|dim)\b',
+            r'^(?:turn|switch|open|close|shut|stop|lock|unlock|play|pause|activate|run|press|set|dim)\b',
             cleaned,
             flags=re.I,
         )
@@ -368,7 +383,7 @@ def expand_shared_verb_clause(clause: str) -> list[tuple[str, str | None]]:
         if items:
             return _build(items, lambda t: f'{m.group(1)} {t} {m.group(3)}')
 
-    m = re.fullmatch(r'(open|close|stop|lock|unlock|play|pause|activate|run|press)\s+(.+)', cleaned, flags=re.I)
+    m = re.fullmatch(r'(open|close|shut|stop|lock|unlock|play|pause|activate|run|press)\s+(.+)', cleaned, flags=re.I)
     if m:
         items = _split_target_list(m.group(2))
         if items:
@@ -404,8 +419,7 @@ def _target_pattern(raw: str, entity_id: str = '', numeric: bool = False) -> str
 def intent(text, name, entity_id='', attrs=None):
     if has_negation(text):
         return None
-    text = re.sub(r'^\s*(?:hey|okay|ok)[ ,]+(?:jarvis|adam)\b[\s,.!?]*', '', text, flags=re.I)
-    text = re.sub(r'^\s*(?:please[ ,]+)?(?:can|could|would)\s+you[ ,]+(?:please[ ,]+)?', '', text, flags=re.I)
+    text = strip_wake_and_polite(text)
     # Preserve signed/decimal numbers for parameterized commands. A minus sign
     # must never silently turn a negative setpoint into a positive one.
     numeric_text = re.sub(r'[^\w.\-]+', ' ', text.casefold()).strip().rstrip('.!?')
@@ -421,7 +435,7 @@ def intent(text, name, entity_id='', attrs=None):
         match = re.fullmatch(pattern, text)
         if match: return match[1], None
     if re.fullmatch(
-        r'(?:is|are) '+target+r' (?:on|off|open|closed|locked|unlocked|wet|dry|clear|occupied|detected|running|active)',
+        r'(?:is|are) '+target+r' (?:on|off|open|closed|shut|locked|unlocked|wet|dry|clear|occupied|detected|running|active)',
         text,
     ) or re.fullmatch(
         r'(?:what is|what s|whats|check|read) (?:the )?(?:status|state|level|value|reading) (?:of|in|for|at) '+target,
@@ -457,8 +471,8 @@ def intent(text, name, entity_id='', attrs=None):
             if adj and re.fullmatch(r'how '+adj+r' is (?:it in )?(?:the )?'+room, text):
                 return 'status', None
 
-    match = re.fullmatch(r'(open|close|stop|lock|unlock|play|pause|activate|run|press) '+target, text)
-    if match: return ('activate' if match[1] == 'run' else match[1]), None
+    match = re.fullmatch(r'(open|close|shut|stop|lock|unlock|play|pause|activate|run|press) '+target, text)
+    if match: return {'run': 'activate', 'shut': 'close'}.get(match[1], match[1]), None
     clean = numeric_text
     numeric_raw = re.sub(r'[^\w.\-]+', ' ', name.casefold()).strip()
     numeric_target = _target_pattern(numeric_raw, entity_id=entity_id, numeric=True)

@@ -31,6 +31,39 @@ Diagnostic-library or training-archive limits do not block weather answers or
 [Home Assistant commands](HOME_ASSISTANT.md); manual uploads on `/bench` still
 enforce the diagnostic clip limits.
 
+## USB setup and pairing
+
+Firmware installation and head-end pairing are separate operations:
+
+1. **Install the correct firmware locally.** A fresh unit with factory firmware
+   does not understand ADAM's serial commands. Connect it to the development
+   computer, preserve its original flash, then use the matching build/flash
+   wrapper. The non-suffixed 1.46 uses `tools/idf146.ps1`; the 1.85C BOX V2 uses
+   `tools/idf.ps1`. Never interchange their images. See [1.46 setup](BOARD_146.md).
+2. **Set up Wi-Fi on the unit.** Pairing preserves the saved network; it does not
+   configure Wi-Fi credentials or make factory firmware compatible.
+3. **Pair with the intended head-end.** The dashboard's **Pair through head-end
+   USB** button sends `headend config` through the server's `DeviceBridge`.
+   Connect the unit to that server computer, and set `VOICE_USB_PORT` for its
+   port if needed. A Pi container needs the optional
+   `deploy/pi5/compose.usb.yaml` device mapping and serial group permission.
+   Follow the Pi deployment guide when enabling that overlay.
+
+Opening a Pi-hosted page in a laptop browser does not route the laptop's USB
+device to the Pi. The page has no browser serial or firmware installer. The
+pairing URL field selects the address saved on the speaker; it does not change
+which computer supplies the USB port. Likewise, starting a separate laptop
+head-end registers units in that laptop's database, not the Pi's database.
+For a laptop-attached unit with the Pi as its destination, local provisioning
+must use an identity created by that Pi. Never copy keys into public commands,
+logs, documentation, or screenshots.
+
+The pairing endpoint removes the newly created registry entry if its USB write
+fails. Its error identifies the server-side USB requirement and explains that
+firmware must already be installed. Updating ADAM firmware normally preserves
+NVS pairing and Wi-Fi; an already paired unit does not need a new identity just
+because its application firmware was updated.
+
 ## Implemented behavior
 
 - Answers wake-triggered weather questions such as **“Hey Adam, what's the

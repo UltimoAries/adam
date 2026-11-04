@@ -116,6 +116,13 @@ class WeatherUnavailable(Exception):
     pass
 
 
+class WeatherLocationAmbiguous(WeatherUnavailable):
+    def __init__(self, choices):
+        self.choices = choices[:5]
+        names = ' or '.join(self.choices[:2])
+        super().__init__(f'That location is ambiguous. Do you mean {names}?')
+
+
 def _parse_calendar_target(raw: str, today: date) -> tuple[date, str] | None:
     key = normalized(raw)
     if key in _FIXED_HOLIDAYS:
@@ -348,7 +355,7 @@ class QueryService:
         if not places:
             raise WeatherUnavailable('I could not find that place. Try its city and state, or save a location alias.')
         if len(places)>1:
-            raise WeatherUnavailable('That location is ambiguous. Please use a saved location name or a city and state.')
+            raise WeatherLocationAmbiguous([p.name for p in places])
         return places[0]
 
     def _local_now(self, place: Location) -> datetime:
@@ -462,7 +469,8 @@ class QueryService:
             return dict(result, text=reply, source=self.provider.source, source_url=self.provider.source_url,
                         location=place.name, fetched_at=fetched, valid_time=valid_time)
         except WeatherUnavailable as exc:
-            return dict(result, status='unavailable', text=str(exc))
+            return dict(result, status='unavailable', text=str(exc),
+                        **({'location_choices':exc.choices} if isinstance(exc, WeatherLocationAmbiguous) else {}))
         except (KeyError, TypeError, ValueError, IndexError) as exc:
             return dict(result, status='unavailable', text='The weather source returned incomplete data. Please try again shortly.')
 
@@ -481,7 +489,7 @@ class QueryService:
     def submit(self, entry, job):
         # Only wake sessions and explicit authenticated text commands get answers.
         # Bench retranscriptions and remote Listen checks never dispatch.
-        if self.closed or job['status']!='done' or entry['trigger'] not in ('wake', 'text'):
+        if self.closed or job['status']!='done' or entry['trigger'] not in ('wake', 'followup', 'text'):
             return False
         is_time = bool(time_date_intent(job['text']))
         is_weather = bool(self.settings().enabled and weather_intent(job['text']))

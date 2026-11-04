@@ -24,10 +24,10 @@ void voice_buffer_feed(voice_buffer_t *b,const int16_t *mono,bool cache_history)
         // Ignore the chime for endpoint detection, but retain all of its PCM.
         // Thirty ms of above-floor activity resets the configurable quiet timer.
         if (b->automatic && b->recorded>50) {
-            if (energy>b->threshold) {
+            if (energy>b->threshold && (!b->use_vad || b->vad_speech)) {
                 if (++b->voiced>=3) { b->speech_seen=true;b->quiet=0; }
             } else { b->voiced=0;++b->quiet; }
-            if (b->recorded%2==0 && b->recorded>=100 && b->speech_seen && b->quiet>=VOICE_QUIET_BLOCKS) {
+            if (b->recorded%2==0 && b->recorded>=100 && b->speech_seen && b->quiet>=(b->followup?100:VOICE_QUIET_BLOCKS)) {
                 b->capturing=false;b->reason=1;
             } else if (b->recorded>=500 && !b->speech_seen) {
                 b->capturing=false;b->reason=3;
@@ -44,7 +44,7 @@ bool voice_buffer_begin(voice_buffer_t *b)
     b->first=(b->head+VOICE_HISTORY_BLOCKS-b->prefix)%VOICE_HISTORY_BLOCKS;
     b->bank^=1;b->head=b->have=b->recorded=0;
     b->session=b->capturing=true;b->failed=false;
-    b->automatic=b->speech_seen=false;b->limit=800;b->quiet=b->voiced=b->reason=0;
+    b->automatic=b->speech_seen=b->followup=false;b->limit=800;b->quiet=b->voiced=b->reason=0;
     return true;
 }
 bool voice_buffer_begin_auto(voice_buffer_t *b)
@@ -77,6 +77,38 @@ bool voice_buffer_packet(const voice_buffer_t *b,unsigned sequence,uint8_t *pcm)
         memcpy(pcm+half*sizeof(voice_block_t),source->pcm,sizeof(voice_block_t));
     }
     return true;
+}
+bool voice_buffer_begin_followup(voice_buffer_t *b)
+{
+    if (!voice_buffer_begin_auto(b)) return false;
+    // Keep speech onset, but never upload the full waiting window.
+    if (b->prefix>30) {
+        b->first=(b->first+b->prefix-30)%VOICE_HISTORY_BLOCKS;
+        b->prefix=30;
+    }
+    b->speech_seen=b->followup=true;b->limit=800;
+    return true;
+}
+void voice_followup_arm(voice_followup_t *g,uint32_t threshold,unsigned seconds)
+{
+    if (seconds<5 || seconds>12) seconds=8;
+    *g=(voice_followup_t){.remaining=seconds*100,.settle=35,.threshold=threshold<6400?6400:threshold};
+}
+bool voice_followup_feed(voice_followup_t *g,uint32_t energy,bool speech)
+{
+    if (!g->remaining) return false;
+    if (!--g->remaining) { g->voiced=0;return false; }
+    // Exclude residual playback before detecting 120 ms of sustained activity.
+    if (g->settle) { --g->settle;return false; }
+    if (!speech) {
+        uint64_t floor=(uint64_t)energy*3;
+        if (floor>g->threshold) {
+            uint64_t next=((uint64_t)g->threshold*19+floor)/20;
+            g->threshold=next>UINT32_MAX?UINT32_MAX:(uint32_t)next;
+        }
+    }
+    if (speech && energy>g->threshold) ++g->voiced; else g->voiced=0;
+    return g->voiced>=12;
 }
 void voice_buffer_gap(voice_buffer_t *b)
 {

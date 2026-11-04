@@ -12,6 +12,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from starlette.requests import ClientDisconnect
 from .clips import MAX_UPLOAD, ClipStorageFull, parse_wav, mono_16k, wav_bytes
+from .device import DeviceError
 from .session import AudioSession, Trigger
 from .voices import VoiceService
 from .voice_api import add_voice_routes
@@ -26,6 +27,11 @@ from .recording_work import RecordingWork
 from .latency import mark
 from .intercom import Intercom, add_intercom_routes
 from .text_commands import TextCommands
+from .status_queries import StatusQueries
+from .dialogue import Dialogue
+from .command_reply import command_reply
+from .context_actions import resolve as resolve_context_action
+from .intent_preview import add_intent_preview_routes
 
 
 class Credentials(BaseModel):
@@ -66,6 +72,7 @@ class Fleet:
         self.panel = PanelService(self.queries, enabled=panel_updates)
         self.archive = InteractionArchive(state.directory/'training_archive')
         self.recordings = RecordingWork(self.archive, self.store, self.jobs)
+        self.dialogue = Dialogue()
         self.sessions = {}
         self.active = set()
         self.commands = {}
@@ -73,6 +80,7 @@ class Fleet:
         self.router = APIRouter()
         self.routes()
         self.text_commands = TextCommands(self)
+        self.status_queries = StatusQueries(self)
         add_intercom_routes(self.router, self.intercom)
         add_voice_routes(self.router,self.voices)
         add_query_routes(self.router,self.queries)
@@ -80,15 +88,41 @@ class Fleet:
         add_home_assistant_routes(self.router,self.home_assistant)
         add_training_routes(self.router,self.archive,self.jobs,self.state)
         add_conversation_routes(self.router,self.conversation)
+        add_intent_preview_routes(self.router, self)
 
     def transcription_done(self, entry, job):
         mark(entry, 'transcribed')
         entry.setdefault('timings_ms', {}).update({k: job[k] for k in ('queue_ms', 'inference_ms') if k in job})
-        if job['status'] != 'done' or entry['trigger'] != 'wake':
+        if job['status'] != 'done' or entry['trigger'] not in ('wake', 'followup'):
+            return
+        if entry['trigger'] == 'followup' and entry.get('endpoint_reason') == 'limit':
+            entry['end_conversation'] = True
+            entry['reply'] = command_reply(entry, dict(status='unsupported', text='There was too much continuous audio. Say Hey Adam and try again.'), self.queries.deliver)
             return
         self.dispatch_command(entry, job)
 
     def dispatch_command(self, entry, job):
+        job = self.dialogue.prepare(entry, job)
+        if entry.get('end_conversation'):
+            self.dialogue.clear_grants(entry.get('unit_id'))
+            key = self.status_queries.key(entry)
+            with self.status_queries.lock:
+                self.status_queries.contexts.pop(key, None)
+                if key:
+                    self.status_queries.latest[key] = entry.get('id')
+            entry['reply'] = command_reply(entry, dict(status='answered', text='Okay.'), self.queries.deliver)
+            return
+        clarification = resolve_context_action(self, entry, job['text'])
+        if clarification:
+            self.status_queries.invalidate(entry)
+            entry['reply'] = command_reply(entry, clarification, self.queries.deliver)
+            return
+        if entry.get('context_action'):
+            self.status_queries.invalidate(entry)
+            self.home_assistant.submit(entry, job)
+            return
+        if self.status_queries.submit(entry, job):
+            return
         if self.intercom.submit(entry, job):
             return
         if (entry.get('trigger') == 'text' and not entry.get('unit_id')
@@ -225,10 +259,19 @@ class Fleet:
             unit = self.state.add_unit(options.name)
             try:
                 await asyncio.to_thread(self.bridge.run,'provision',dict(url=url,**unit))
-            except Exception:
+            except Exception as exc:
                 # A failed USB command must not leave a phantom registered unit.
                 with self.state.db() as db:
                     db.execute('DELETE FROM units WHERE id=?',(unit['id'],))
+                if isinstance(exc, DeviceError):
+                    # The browser's USB ports are unrelated to this server's
+                    # serial bridge. Do not echo device replies or credentials.
+                    raise DeviceError(
+                        'USB pairing failed on the head-end computer. Connect the unit to the '
+                        'computer running ADAM (the Pi for a Pi-hosted page), enable its USB '
+                        'access, and close other serial tools. The unit must already run ADAM '
+                        'firmware; this button cannot flash firmware or access USB on another laptop.'
+                    ) from None
                 raise
             return dict(id=unit['id'],name=unit['name'],paired=True)
 
@@ -262,7 +305,7 @@ class Fleet:
             return {'cancelled':True}
 
         @router.get('/api/units/{unit_id}/poll')
-        async def poll(request: Request,unit_id: str,firmware: str='',wake_model: str='unavailable',busy: bool=False,dismissed: str='',intercom: bool=False):
+        async def poll(request: Request,unit_id: str,firmware: str='',wake_model: str='unavailable',busy: bool=False,dismissed: str='',intercom: bool=False,followup: bool=False,followup_version: int=1):
             self.require_unit(request,unit_id)
             self.state.heartbeat(unit_id,firmware,wake_model)
             self.intercom.heartbeat(unit_id, intercom, busy)
@@ -279,7 +322,15 @@ class Fleet:
             command = self.commands.pop(unit_id,None)
             if command and command['expires']>time.time():
                 return dict(command, panel=panel)
-            return dict(self.state.offer(unit_id) or {'type':'idle'}, panel=panel)
+            offer = self.state.offer(unit_id) or {'type':'idle'}
+            if followup and offer['type'] == 'page' and self.conversation.options.followup_listening:
+                entry = next((e for e in list(self.sessions.values()) if e['unit_id'] == unit_id
+                    and e.get('reply', {}).get('page_id') == offer['id']), None)
+                seconds = self.dialogue.offer(unit_id, offer['id'], entry, adaptive=followup_version>=2) if entry else 0
+                if seconds:
+                    offer['followup_seconds'] = seconds
+                    offer['interruptible'] = followup_version >= 2 and self.conversation.options.interrupt_replies
+            return dict(offer, panel=panel)
 
         @router.get('/api/units/{unit_id}/pages/{page_id}/audio')
         async def page_audio(request: Request,unit_id: str,page_id: str):
@@ -290,6 +341,7 @@ class Fleet:
         async def ack(request: Request,unit_id: str,page_id: str,options: PageAck):
             self.require_unit(request,unit_id)
             self.state.ack(unit_id,page_id,options.status,options.detail)
+            self.dialogue.ack(unit_id, page_id, options.status)
             for entry in list(self.sessions.values()):
                 if entry['unit_id'] == unit_id and entry.get('reply', {}).get('page_id') == page_id:
                     mark(entry, 'page_' + options.status)
@@ -315,17 +367,24 @@ class Fleet:
                 raise ValueError('Pre-roll must be 0–2000 ms in complete 20 ms frames, followed by live audio')
             session = AudioSession(session_id,request.headers.get('x-trigger','touch'),request.headers.get('x-wake-model'))
             mode=request.headers.get('x-audio-mode','fixed')
-            if mode not in ('fixed','silence-v1') or (mode=='silence-v1' and session.trigger!=Trigger.WAKE):
+            if mode not in ('fixed','silence-v1') or (mode=='silence-v1' and session.trigger not in (Trigger.WAKE, Trigger.FOLLOWUP)):
                 raise ValueError('Invalid audio endpoint mode')
             automatic=mode=='silence-v1'
             # The durable duplicate lookup above yields; reserve again without a yield
             # so concurrent uploads cannot both claim the same device or fifth slot.
             if unit_id in self.active or len(self.active)>=4 or self.intercom.current(unit_id):
                 raise HTTPException(409,'Audio receiver is busy')
+            followup_info = {}
+            if session.trigger == Trigger.FOLLOWUP:
+                if not self.conversation.options.followup_listening:
+                    raise ValueError('Follow-up listening is disabled')
+                followup_info = self.dialogue.consume(unit_id, request.headers.get('x-followup-page', ''))
+            else:
+                self.dialogue.clear_grants(unit_id)
             self.active.add(unit_id)
             entry = dict(id=session_id,unit_id=unit_id,trigger=session.trigger.value,model_id=session.model_id,
                 status='listening',received=0,expected=frames*640,started=time.time(),text='',preroll_ms=preroll_ms,
-                endpoint_mode=mode)
+                endpoint_mode=mode, **followup_info)
             self.sessions[session_id] = entry
             if len(self.sessions)>100:
                 del self.sessions[next(k for k,v in self.sessions.items() if v['status']!='listening')]

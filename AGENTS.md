@@ -8,7 +8,7 @@ This document gives AI coding agents and developers an end-to-end architectural 
 
 ADAM is a local-first voice assistant, paging system, and smart-home controller built from three cooperating tiers on a private LAN. Experimental full-duplex drop-in is implemented in `headend/intercom.py` and `firmware/main/intercom.c`; see [Intercom](docs/INTERCOM.md). SIP is not implemented.
 
-1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, firmware targets `v31-185` and `v31-146`; installed units may run older builds):**
+1. **Speaker / Display Units (`firmware/` — ESP-IDF v5.5.x on `esp32s3`, firmware targets `v33-185` and `v33-146`; installed units may run older builds):**
    - **Target hardware:** **Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2** (`16 MB` flash, `8 MB` octal PSRAM, `360×360` round ST77916 QSPI LCD, CST816 capacitive touch, ES7210 dual-mic ADC, ES8311 DAC/amp).
    - **Physical orientation:** Operate with the **USB-C port pointing down**. On the rear/side enclosure buttons, the **upper button is `BOOT` (`GPIO0`)** and the **lower button is hardware `RESET`**.
    - **On-device responsibilities:** Continuous 16 kHz stereo capture over a shared full-duplex I2S bus, local on-device **Hey Adam** wake-word detection (`hey_adam-20261030-c60f0456` via `micro_wake_word` + TFLite Micro), 2-second rolling pre-roll ring buffer, quiet 120 ms trigger cue, chunked silence-ended HTTP audio upload, mono PCM page playback, local monotonic countdown timer bars, touch UI, and the animated sky/weather/LLM-ring home screen.
@@ -39,7 +39,7 @@ ADAM is a local-first voice assistant, paging system, and smart-home controller 
    - `X-Audio-Mode: silence-v1` (chunked `644`-byte records: 4-byte little-endian sequence + `640` bytes of 20 ms 16 kHz mono PCM, terminated by sequence `0xffffffff` + actual count + endpoint reason).
 
 ### B. Utterance Dispatch Order (`headend/fleet.py` → `Fleet.transcription_done`)
-Only **completed wake sessions** (`entry['trigger'] == 'wake'` and `job['status'] == 'done'`) trigger automatic actions or spoken replies. Touch captures, remote Listen sessions, `/bench` uploads, and training-archive retranscriptions are diagnostic-only and **never** auto-dispatch.
+Only **completed wake sessions or reply-authorized follow-up sessions** (`entry['trigger'] in ('wake', 'followup')` and `job['status'] == 'done'`) trigger automatic actions or spoken replies. Touch captures, remote Listen sessions, `/bench` uploads, and training-archive retranscriptions are diagnostic-only and **never** auto-dispatch.
 
 Explicit commands from the signed-in home page use `POST /api/commands/text`
 (`headend/text_commands.py`) and the same `Fleet.dispatch_command` handlers.
@@ -47,7 +47,22 @@ They use an internal `text` trigger, which device audio uploads cannot supply.
 Replies default to browser text, with optional speaker playback. Request IDs
 persist for replay protection; see [Text commands](docs/TEXT_COMMANDS.md).
 
-Explicit intercom commands are handled first by `Intercom.submit`: exact unique speaker names, opt-in destination permission, online/capability/busy checks, and durable session replay protection. During an active call the on-device wake word hangs up instead of creating a transcript. Live PCM never enters STT or the archive.
+Short topic resolution in `headend/dialogue.py` precedes dispatch. Firmware v33
+opens a bounded local follow-up window only after a qualifying reply;
+`X-Trigger: followup` requires a delivered, same-speaker, single-use page grant.
+See [Follow-up conversation](docs/FOLLOWUP_CONVERSATION.md).
+Interruption testing was paused at the user's request on 2026-11-02. Normal
+follow-ups are user-confirmed; interruption remains unreliable even in the
+temporary lower-volume trial. Read that document's investigation handoff before
+resuming. Office volume is restored and no diagnostic capture remains armed.
+
+Read-only status questions first pass through `headend/status_queries.py`.
+It uses live Home Assistant/model/speaker data and 90-second, per-speaker or
+per-browser-session/tab context for status follow-ups. It never dispatches
+Home Assistant actions or invokes the conversation LLM. See
+[Status questions](docs/STATUS_QUESTIONS.md).
+
+Explicit intercom commands are handled next by `Intercom.submit`: exact unique speaker names, opt-in destination permission, online/capability/busy checks, and durable session replay protection. During an active call the on-device wake word hangs up instead of creating a transcript. Live PCM never enters STT or the archive.
 
 Other wake transcripts route through five deterministic stages before touching the LLM:
 
@@ -64,6 +79,8 @@ Other wake transcripts route through five deterministic stages before touching t
    - Handles read-only multi-entity summaries (`summary_intent`: `doors`, `windows`, `openings`, `locks`, `lights`, `leaks`).
    - Executes bounded service calls (`controls()` / `action_payload()`) with state readback confirmation and durable `(unit_id, session_id)` replay protection.
    - Supports up to four explicitly named actions in one utterance, validating the complete plan before sending commands and rejecting conflicting or ambiguous targets.
+   - `context_actions.py` resolves bounded follow-ups: one recent device, or up to four lights reported on in the immediately preceding summary. Context is scoped and expires after 90 seconds. Compound on/brightness commands for one light coalesce into one call; `shut` aliases the supported `close` control.
+   - `intent_preview.py` provides authenticated model-assisted evaluation on `/models`, separate from live routing. It validates structured proposals against enabled inventory but never executes actions, reads live HA states, speaks, or changes dialogue context. Keep model-assisted execution disabled unless separately implemented and authorized.
    - In `heat_cool` mode, thermostat commands must specify `heating_temperature` or `cooling_temperature`; generic targets ask for clarification. Only the named setpoint changes. A conflict with the per-entity `temperature_gap` is rejected without moving the opposite bound. Both bounds are sent in one request without changing mode and confirmed by readback; see `docs/HOME_ASSISTANT.md`.
      `temperature_gap=0` (the default) disables ADAM's extra minimum gap; never infer a minimum from the current range width. Heating must remain at or below cooling, and device-side restrictions may still apply.
 5. **Fallback City Temperature → Conversational LLM (`headend/queries.py` → `headend/conversation.py`):**

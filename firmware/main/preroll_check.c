@@ -71,5 +71,34 @@ bool voice_buffer_selftest(void)
     for (unsigned n=0;n<500;++n) voice_buffer_feed(&b,mono,true);
     ok=ok && !b.capturing && b.reason==3 && b.recorded==500;
     voice_buffer_end(&b);
+    // Follow-up gate: ignore playback tail, reject a transient, then require
+    // sustained activity. Silence expires without creating an audio session.
+    voice_followup_t gate;
+    voice_followup_arm(&gate,6400,8);
+    for (unsigned n=0;n<35;++n) ok=ok && !voice_followup_feed(&gate,1000000,true);
+    for (unsigned n=0;n<11;++n) ok=ok && !voice_followup_feed(&gate,1000000,true);
+    ok=ok && !voice_followup_feed(&gate,0,false);
+    for (unsigned n=0;n<11;++n) ok=ok && !voice_followup_feed(&gate,1000000,true);
+    ok=ok && voice_followup_feed(&gate,1000000,true);
+    voice_followup_arm(&gate,6400,8);
+    for (unsigned n=0;n<800;++n) ok=ok && !voice_followup_feed(&gate,0,false);
+    ok=ok && !gate.remaining && !voice_followup_feed(&gate,1000000,true);
+    for (unsigned n=0;n<200;++n) voice_buffer_feed(&b,mono,true);
+    ok=ok && voice_buffer_begin_followup(&b) && b.prefix==30 && b.speech_seen;
+    voice_buffer_end(&b);
+    // Loud non-speech must not hold a follow-up open or start a new capture.
+    voice_followup_arm(&gate,6400,12);
+    for (unsigned n=0;n<1200;++n) ok=ok && !voice_followup_feed(&gate,1000000,false);
+    ok=ok && !gate.remaining;
+    voice_buffer_gap(&b);b.use_vad=true;b.vad_speech=false;
+    ok=ok && voice_buffer_begin_followup(&b);
+    for (unsigned i=0;i<VOICE_BLOCK_SAMPLES;++i) mono[i]=(i%2)?600:-600;
+    for (unsigned n=0;n<800 && b.capturing;++n) voice_buffer_feed(&b,mono,true);
+    ok=ok && b.reason==1 && b.recorded==150;
+    voice_buffer_end(&b);voice_buffer_gap(&b);b.vad_speech=true;
+    ok=ok && voice_buffer_begin_followup(&b);
+    for (unsigned n=0;n<800 && b.capturing;++n) voice_buffer_feed(&b,mono,true);
+    ok=ok && b.reason==2 && b.recorded==800;
+    voice_buffer_end(&b);
     free(storage);return ok;
 }

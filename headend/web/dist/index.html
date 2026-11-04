@@ -48,6 +48,7 @@
     <div class="command-options"><label>Speaker context<select id="commandUnit"><option value="">No speaker — reply here</option></select></label><label class="command-speak"><input id="commandSpeak" type="checkbox"> Also speak the reply</label><button id="commandSend" class="primary" type="submit">Send command</button></div>
   </form>
   <p class="help">No “Hey Adam” needed. Replies appear here. Choose a speaker for timers, local time/weather, or calls. Calls connect speakers; they do not use your phone’s microphone.</p>
+  <p class="help">Ask “Which lights are on right now?” then follow up with “Which one is unavailable?” or “Is it back online?”</p>
   <p id="commandStatus" role="status" aria-live="polite"></p>
   <button id="commandRetry" class="secondary" hidden>Check / retry safely</button>
   <div id="commandReplies" class="history" aria-live="polite" aria-label="Command replies"></div>
@@ -63,7 +64,10 @@
 </section>
 <div class="layout"><aside>
 <section class="panel units"><div class="section-title"><h2>Rooms & units</h2><button id="selectAll" class="quiet">Select online</button></div><p class="help">Choose where your message should play.</p><div id="units" class="unit-list"></div>
-<details><summary>Add a USB-connected unit</summary><form id="pairForm"><label>Unit name<input id="unitName" value="Round box" maxlength="48" required></label><label>Head-end LAN address<input id="pairUrl" placeholder="http://192.168.1.10:8765" required></label><button class="secondary" type="submit">Pair over USB</button><p class="help">Saves the device key and server address over USB. Its saved Wi-Fi network stays in use.</p></form></details></section>
+<details><summary>Pair a unit already running ADAM</summary>
+<p class="help">Install the firmware for your exact board first, then configure Wi-Fi on its screen. This pairing button saves the device key and server address; it does not install or update firmware.</p>
+<p class="help">Connect USB to the computer running this head-end. If ADAM runs on a Raspberry Pi, connect the unit to that Pi with USB access enabled. A unit plugged into the laptop viewing this page is not accessible through this button.</p>
+<form id="pairForm"><label>Unit name<input id="unitName" value="Round box" maxlength="48" required></label><label>Head-end LAN address<input id="pairUrl" placeholder="http://192.168.1.10:8765" required></label><button class="secondary" type="submit">Pair through head-end USB</button><p class="help">The unit's saved Wi-Fi network stays in use.</p></form></details></section>
 <div class="local-note"><span class="status-dot"></span><div><strong>Local speech &amp; paging</strong><p>Pages expire after five minutes. Wake-word capability is reported by each unit.</p></div></div></aside>
 <div class="content">
 <section class="panel compose"><div class="section-title"><div><span class="eyebrow">MAKE AN ANNOUNCEMENT</span><h2>Send a page</h2></div><span class="badge">5 min expiry</span></div>

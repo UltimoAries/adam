@@ -56,3 +56,12 @@ check the device or timer state before issuing a new command.
 
 The command box is separate from **Send a page**, which reads an announcement
 aloud without interpreting it as a home-control instruction.
+
+Status answers include expandable details and a check time. The browser sends
+an optional random `context_id`, scoped by the server to the signed-in session,
+to support 90-second status follow-ups. See [Status questions](STATUS_QUESTIONS.md)
+for supported questions, freshness, and model-routing distinctions.
+
+The same scoped context now supports weather day/city follow-ups and the last
+three consecutive model exchanges. See [Follow-up conversation](FOLLOWUP_CONVERSATION.md).
+Browser playback does not open the speaker microphone.

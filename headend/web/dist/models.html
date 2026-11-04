@@ -20,8 +20,15 @@
 <label>Transcription timeout (seconds)<input id="stt_timeout" type="number" min="1" max="30" step="0.5" required></label>
 <label>Conversation timeout (seconds)<input id="conversation_timeout" type="number" min="1" max="30" step="0.5" required></label>
 <label>Retry GPU after (seconds)<input id="cooldown_seconds" type="number" min="5" max="300" required></label>
+<label class="inline"><input id="followup_listening" type="checkbox"> Listen for a follow-up after spoken answers</label>
+<p class="help">On updated speakers, you have five to twelve seconds to continue without saying Hey Adam. Say ?that?s all? or tap the center to finish. Announcements do not open listening.</p>
+<label class="inline"><input id="interrupt_replies" type="checkbox"> Allow Hey Adam to interrupt spoken replies (experimental)</label>
 <label class="inline"><input id="conversation_enabled" type="checkbox"> Answer general questions</label>
 </div></details><button id="saveProcessing" class="primary" type="submit">Save processing settings</button><p id="processingStatus" class="help" role="status"></p>
 </section><section class="panel"><h2>Always ready on the Pi</h2><p id="fallbackModels"></p><p>Your current <a href="/voices">Piper speaking voice</a> stays on the Pi for fast replies. Home Assistant control, timers and query handling stay on the Pi too.</p><p class="help">If either GPU service fails, both model requests use the Pi during the retry period. The first failed request may wait for its timeout. Local models can be slower or less accurate. Home Assistant and weather still need their usual network connections.</p></section>
 <section class="panel"><h2>Try a conversation</h2><p class="help">Uses saved settings. This preview does not play audio or control devices.</p><label>Question<input id="conversation-question" maxlength="500" placeholder="Why is the sky blue?"></label><button id="testConversation" type="button">Try question</button><p id="conversation-answer" role="status"></p></section>
+<section class="panel"><h2>Preview home requests</h2><p class="help">Try how the model interprets a request using your enabled devices and saved model settings. This preview never controls devices, reads live states, or plays audio. Voice commands continue using the existing command rules.</p>
+<label>Request<input id="intent-question" maxlength="300" placeholder="Can we make the living room light fully bright?"></label>
+<label>Previous device (optional, for “it” or “that”)<select id="intent-context"><option value="">No previous device</option></select></label>
+<button id="previewIntent" type="button">Preview interpretation</button><p class="help">A preview can take up to 30 seconds per model, or a minute with Pi fallback.</p><p id="intent-answer" role="status"></p><ul id="intent-steps"></ul><p id="intent-provider" class="help"></p></section>
 </form></main></body></html>

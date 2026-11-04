@@ -6,6 +6,17 @@ speaker/microphone unit and a Python head-end.
 
 ## Features
 
+- **Wake-free follow-up conversation:** Updated speakers listen for five to twelve seconds
+  after answering. Weather follow-ups retain the day/city, and general model
+  questions retain recent exchanges. Say "that's all" or tap the center to finish.
+  Wake-word interruption during playback remains experimental and unreliable
+  in the Office pilot; investigation is paused with results and next steps documented.
+  See [Follow-up conversation](docs/FOLLOWUP_CONVERSATION.md).
+- **Live status and short follow-ups:** Ask which lights are on, which devices
+  or speakers are unavailable, or which brain/model ADAM uses. Status answers
+  read actual service data; “Which one?” and “Is it back online?” retain brief,
+  isolated context. See [Status questions](docs/STATUS_QUESTIONS.md).
+
 - **Type to ADAM:** A phone-friendly command box below the Monitor Map on the signed-in
   home page runs the same commands as voice, without a wake word. Replies appear
   on the page; optionally speak them through a selected unit. Supports Home
@@ -44,11 +55,19 @@ speaker/microphone unit and a Python head-end.
   doors/windows, locks, motion, leak sensors), assign persistent spoken names and
   aliases, ask indoor room sensor and bedtime summary questions (*"What's the
   temperature in the bedroom?"*, *"Are any doors or windows open?"*), and run
-  spoken commands with confirmations, including up to four explicitly named
-  actions in one utterance.
+  spoken commands with confirmations, including up to four actions in one
+  utterance. "Turn on the living room light and set it to 30%" sends one
+  brightness command. "Can we turn those off?" can control up to four lights
+  just reported on; "shut the garage door" means "close the garage door".
+  Targets, permissions, and capabilities are checked before execution. See
+  [Home Assistant commands](docs/HOME_ASSISTANT.md).
   Independent thermostat commands such as "set the heat to 65" and "set the
   cooling to 71" change only the named setpoint. Automatic-mode requests must
   specify heating or cooling, and gap conflicts leave both limits unchanged.
+- **Model-assisted home request preview (`/models`):** Inspect a proposed
+  device/action/value using the configured local or LAN model. This preview
+  never executes actions or reads live device states; live commands continue
+  through deterministic handlers.
 - **Time, world clock, calendar & weather answers (`/queries`):** Spoken local
   time and date per speaker timezone, world clock lookups (*"What time is it in
   Tokyo?"*), calendar date math (*"How many days until Christmas?"*), and
@@ -80,7 +99,7 @@ speaker/microphone unit and a Python head-end.
 
 ## Hardware Target & Setup Notes
 
-Current source firmware targets are **`v31-185`** and **`v31-146`**. Check the
+Current source firmware targets are **`v33-185`** and **`v33-146`**. Check the
 dashboard or `status` over USB for the version actually installed on each unit;
 updating the head-end does not flash speakers.
 
@@ -176,12 +195,12 @@ back to standard Windows installations (`%USERPROFILE%\.espressif` or
 `C:\Espressif\esp-idf`):
 
 ```powershell
-# Original 1.85C BOX V2 (v31-185):
+# Original 1.85C BOX V2 (v33-185):
 .\tools\idf.ps1 -DIDF_TARGET=esp32s3 build
 # Replace COM6 with your unit's serial port:
 .\tools\idf.ps1 -p COM6 flash
 
-# Non-suffixed 1.46 only (v31-146), using its own USB port:
+# Non-suffixed 1.46 only (v33-146), using its own USB port:
 .\tools\idf146.ps1 build
 .\tools\idf146.ps1 -p <new-board-port> flash
 ```
@@ -252,7 +271,7 @@ interface.
 ### Historical Bring-Up & Design Notes
 - [Audio pipeline & board memory capacity notes](docs/AUDIO_AND_CAPACITY.md)
 - [Diagnostic audio bench (`/bench`)](docs/HEADEND_TEST_UI.md)
-- [Hardware bring-up & development history](docs/DEVELOPMENT_HISTORY.md)
+- [Development history & change log](docs/DEVELOPMENT_HISTORY.md)
 - [Initial architecture & roadmap notes](docs/HEADEND_PLAN.md)
 
 ---

@@ -13,12 +13,15 @@ from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .latency import mark
 from .model_catalog import bounded_body, catalog_json, catalog_models
+from .ha_devices import strip_wake_and_polite
 
 
 SYSTEM = ('You are ADAM, a home voice assistant. Answer in one short sentence, '
           'at most 30 words and 180 characters. Use plain speech without markup. '
           'You cannot control devices or access live weather, news or personal data. '
-          'Never claim to have performed an action. Admit uncertainty.')
+          'Never claim to have performed an action. Admit uncertainty. '
+          'Use recent exchanges to resolve follow-up questions. Avoid repeating the question or '
+          'adding offers such as anything else I can help with. Ask only necessary clarification questions.')
 
 
 def question(text):
@@ -26,13 +29,15 @@ def question(text):
 
 
 def control_request(text):
-    text = re.sub(r'^(?:(?:can|could|would) you\s+)?(?:please\s+)?', '', question(text), flags=re.I)
-    return bool(re.match(r'^(?:turn|switch|toggle|dim|brighten|set|lock|unlock|open|close|start|stop|pause|resume|mute|unmute|arm|disarm|activate|deactivate)\b', text, re.I))
+    text = strip_wake_and_polite(question(text))
+    return bool(re.match(r'^(?:turn|switch|toggle|dim|brighten|set|lock|unlock|open|close|shut|start|stop|pause|resume|mute|unmute|arm|disarm|activate|deactivate)\b', text, re.I))
 
 
 class ConversationSettings(BaseModel):
     model_config = ConfigDict(extra='forbid')
     enabled: bool = False
+    followup_listening: bool = True
+    interrupt_replies: bool = True
     mode: str = Field(default='prefer_remote', pattern=r'^(local|prefer_remote)$')
     remote_url: str = Field(default='http://gpu-host.local:11434', max_length=250)
     remote_model: str = Field(default='qwen3.5:9b', min_length=1, max_length=150)
@@ -172,15 +177,20 @@ class ConversationService:
                 return 'local'
             return 'unavailable'
 
-    async def _request(self, url, model, text, timeout, local):
+    async def _request(self, url, model, text, timeout, local, history=(), *, response_model=None, system=SYSTEM):
         async def request():
+            payload = {
+                'model': model, 'stream': False, 'think': False, 'keep_alive': -1,
+                'messages': [{'role': 'system', 'content': system}, *history, {'role': 'user', 'content': text}],
+                'options': dict(num_ctx=(8192 if response_model else 1024 if local else 4096),
+                                num_predict=384 if response_model else 64,
+                                temperature=0 if response_model else 0.3,
+                                **({'num_thread': 2} if local else {}))}
+            if response_model:
+                payload['format'] = response_model.model_json_schema()
             async with httpx.AsyncClient(transport=self.transport, trust_env=False, follow_redirects=False,
                     timeout=httpx.Timeout(timeout, connect=min(1.5, timeout))) as client:
-                async with client.stream('POST', url+'/api/chat', json={
-                        'model': model, 'stream': False, 'think': False, 'keep_alive': -1,
-                        'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': text}],
-                        'options': dict(num_ctx=1024 if local else 4096, num_predict=64,
-                                        temperature=0.3, **({'num_thread': 2} if local else {}))}) as response:
+                async with client.stream('POST', url+'/api/chat', json=payload) as response:
                     response.raise_for_status()
                     raw = bytearray()
                     async for chunk in response.aiter_bytes():
@@ -191,28 +201,38 @@ class ConversationService:
             message = data.get('message') if isinstance(data, dict) else None
             if not isinstance(message, dict) or message.get('tool_calls') or not data.get('done'):
                 raise ValueError('Invalid or incomplete conversation response')
+            if response_model:
+                return response_model.model_validate_json(message.get('content')).model_dump()
             return spoken_text(message.get('content'))
         return await asyncio.wait_for(request(), timeout=timeout)
 
-    def answer(self, text):
+    def answer(self, text, history=()):
         with self.lock:
-            options, generation = self.options.model_copy(), self.generation
-            attempt_remote = (options.mode != 'local' and self.clock() >= self.retry_at and
-                              not (self.gpu_failover and self.gpu_failover.remaining()))
-        if not options.enabled:
-            return dict(status='ignored', text='')
+            if not self.options.enabled:
+                return dict(status='ignored', text='')
         text = question(text)
         if not text:
             return dict(status='ignored', text='')
         if control_request(text):
             return dict(status='unsupported', text='I could not match that device command. Check its Adam name and enabled controls in Home Assistant settings.')
+        return self.generate(text, history)
+
+    def generate(self, text, history=(), *, response_model=None, system=SYSTEM, timeout_seconds=None):
+        """Bounded model transport; structured previews never dispatch or deliver."""
+        with self.lock:
+            options, generation = self.options.model_copy(), self.generation
+            if self.closed:
+                return dict(status='unavailable', text='ADAM is restarting. Please try again.')
+            attempt_remote = (options.mode != 'local' and self.clock() >= self.retry_at and
+                              not (self.gpu_failover and self.gpu_failover.remaining()))
         error = None
         for provider in (['remote', 'local'] if attempt_remote else ['local']):
             local = provider == 'local'
             try:
                 answer = asyncio.run(self._request(getattr(options, provider+'_url'),
                     getattr(options, provider+'_model'), text,
-                    getattr(options, provider+'_timeout_seconds'), local))
+                    timeout_seconds or getattr(options, provider+'_timeout_seconds'), local, history,
+                    response_model=response_model, system=system))
             except Exception as exc:
                 error = provider.capitalize()+' conversation unavailable: '+type(exc).__name__
                 with self.lock:
@@ -224,11 +244,17 @@ class ConversationService:
                                 self.gpu_failover.fail(options.cooldown_seconds)
                 continue
             with self.lock:
+                if generation != self.generation or self.closed:
+                    return dict(status='unavailable', text='Model settings changed. Please try again.')
                 if generation == self.generation:
                     self.last_provider = provider
                     if not local:
                         self.retry_at, self.last_error = 0, None
-            return dict(status='answered', text=answer, provider=provider, model=getattr(options, provider+'_model'))
+            result = dict(status='answered', text='' if response_model else answer,
+                          provider=provider, model=getattr(options, provider+'_model'))
+            if response_model:
+                result['proposal'] = answer
+            return result
         with self.lock:
             if generation == self.generation:
                 self.last_provider = 'unavailable'
@@ -236,7 +262,7 @@ class ConversationService:
 
     def submit(self, entry, job):
         with self.lock:
-            if (self.closed or not self.options.enabled or entry['trigger'] not in ('wake', 'text') or
+            if (self.closed or not self.options.enabled or entry['trigger'] not in ('wake', 'followup', 'text') or
                     job['status'] != 'done' or entry.get('conversation_submitted')):
                 return
             entry['conversation_submitted'] = True
@@ -261,7 +287,7 @@ class ConversationService:
                 entry['reply'] = dict(status='ignored', text='', error='Question expired')
                 return
             started = self.clock()
-            result = self.answer(text)
+            result = self.answer(text, entry.get('conversation_history', ()))
             result['lookup_ms'] = round((self.clock()-started)*1000)
             mark(entry, 'answer_ready')
             with self.lock:

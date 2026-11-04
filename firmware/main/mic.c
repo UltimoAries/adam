@@ -8,6 +8,8 @@
 #include "audio.h"
 #include "headend.h"
 #include "wake.h"
+#include "barge.h"
+#include "esp_vad.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -84,6 +86,7 @@ static bool overflow(i2s_chan_handle_t channel,i2s_event_data_t *event,void *con
 static void capture_task(void *unused)
 {
     unsigned seen_overflows=0;
+    vad_handle_t vad=vad_create(VAD_MODE_3);
     for (;;) {
         size_t bytes=0;
         esp_err_t err=i2s_channel_read(input,wire_samples,sizeof(wire_samples),&bytes,100);
@@ -111,8 +114,14 @@ static void capture_task(void *unused)
 #else
         for (unsigned i=0;i<count*CHANNELS;++i) samples[i]=(int16_t)(wire_samples[i]>>16);
 #endif
-        headend_feed(samples,count);
-        if (intercom_active()) intercom_feed(samples,count); else wake_feed(samples,count);
+        if (barge_active()) barge_feed(samples,count);
+        else {
+            int16_t mono[FRAMES];
+            for (unsigned i=0;i<count;++i) mono[i]=samples[i*2];
+            bool speech=vad && vad_process(vad,mono,RATE,10)==VAD_SPEECH;
+            headend_feed(samples,count,vad!=NULL,speech);
+            if (intercom_active()) intercom_feed(samples,count); else wake_feed(samples,count);
+        }
         uint64_t sum[2]={0}; unsigned maximum[2]={0},saturated[2]={0};
         unsigned phase_mask[2]={0},zeros[2]={0};
         for (unsigned i=0;i<count;++i) for (unsigned ch=0;ch<CHANNELS;++ch) {

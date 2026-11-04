@@ -130,6 +130,10 @@ void ui_render(int64_t now)
             (audio_is_playing() || audio_clip_busy())?SPACE_PLAYING:SPACE_IDLE;
         home_scene=activity;
         space_render(now,activity,now<controls_until);
+        if (headend_followup_waiting()) {
+            centered(180,212,1,CYAN,"Listening for a follow-up");
+            centered(180,230,1,MUTED,"Tap center to finish");
+        }
         if (now<controls_until) { rails(now);arrow(true);arrow(false); }
         return;
     } else gfx_clear(BG);

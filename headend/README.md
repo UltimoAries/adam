@@ -7,6 +7,9 @@ archive.
 
 - **Dashboard & fleet management (`/`)**: Pair units over USB, monitor online
   status, review incoming audio sessions, and send typed or recorded pages.
+  The **Type to ADAM** box shares voice command handlers and keeps short context
+  isolated by signed-in session, browser tab, and selected speaker. See
+  [TEXT_COMMANDS.md](../docs/TEXT_COMMANDS.md).
   The Monitor Map includes host CPU/memory and ADAM data-drive usage; authenticated
   `/api/system/resources` readings are cached for five seconds. CPU is averaged
   across host cores between samples; memory excludes reclaimable Linux cache.
@@ -17,6 +20,9 @@ archive.
   conversation (Ollama) on one GPU computer. Both routes share a failure cooldown
   and fall back to local `base.en` and configured local Ollama. Piper TTS stays
   local. See [CONVERSATION.md](../docs/CONVERSATION.md).
+  **Preview home requests** evaluates model interpretations without executing
+  actions or reading live Home Assistant states. This is separate from live
+  command routing.
 - **Timers (`/` and voice)**: Create, extend, check, and cancel named countdowns
   with per-speaker display/ringing and fleet-wide lookup by name.
 - **Cameras (`/cameras`)**: Private RTSP settings, seven gesture choices, bounded
@@ -24,7 +30,15 @@ archive.
   Inference runs in an optional Pi sidecar. See [CAMERAS.md](../docs/CAMERAS.md).
 - **Home Assistant (`/home-assistant`)**: Persistent local names and aliases,
   optional automatic entity import, capability-based controls, and spoken
-  commands. See [HOME_ASSISTANT.md](../docs/HOME_ASSISTANT.md).
+  commands, including polite wording, bounded contextual light groups, and
+  combined on/brightness requests. "Shut" and "close" resolve the same supported
+  control. See [HOME_ASSISTANT.md](../docs/HOME_ASSISTANT.md).
+- **Follow-ups and status**: Capable speakers open short listening windows after
+  qualifying replies. Device references, weather topics, and recent model
+  exchanges expire after 90 seconds. Status questions use live service data.
+  Reply interruption remains experimental and its investigation is paused. See
+  [FOLLOWUP_CONVERSATION.md](../docs/FOLLOWUP_CONVERSATION.md) and
+  [STATUS_QUESTIONS.md](../docs/STATUS_QUESTIONS.md).
 - **Information & weather (`/queries`)**: Spoken weather and forecast answers via
   Open-Meteo, plus cached time/weather metadata for each unit's sky display
   ([SPACE_PANEL.md](../docs/SPACE_PANEL.md) and [INFORMATION_QUERIES.md](../docs/INFORMATION_QUERIES.md)).
@@ -61,6 +75,14 @@ Docker deployment.
   (`PiperRuntime`).
 - `home_assistant.py`, `ha_inventory.py`, `ha_devices.py`: Home Assistant REST
   integration, local naming/aliasing, and spoken device-command matching.
+- `dialogue.py`, `context_actions.py`: Scoped topic memory, single-use delivered
+  reply grants, and bounded contextual controls through existing HA validation.
+- `status_queries.py`: Read-only Home Assistant, speaker, and model status with
+  short follow-up context and evidence-based explanations.
+- `intent_preview.py`: Structured model proposals checked against the enabled
+  inventory, without action execution or live state reads.
+- `text_commands.py`: Authenticated browser commands, tab context, optional
+  speaker replies, and durable request replay protection.
 - `queries.py`, `panel.py`: Weather intent parser, cached Open-Meteo lookups,
   and non-blocking home-screen metadata snapshots.
 - `conversation.py`: Short spoken answers via preferred LAN Ollama with bounded

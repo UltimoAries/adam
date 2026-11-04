@@ -185,7 +185,7 @@ class Intercom:
         try:
             if len(matches) != 1:
                 raise HTTPException(409, 'Please use the exact name of one speaker')
-            call = self.start(entry['unit_id'], matches[0]['id'], voice=entry.get('trigger') == 'wake')
+            call = self.start(entry['unit_id'], matches[0]['id'], voice=entry.get('trigger') in ('wake', 'followup'))
             entry['reply'] = dict(status='done', text='Connecting intercom.', call_id=call['id'])
         except HTTPException as exc:
             entry['reply'] = command_reply(entry, dict(status='done', text=str(exc.detail)), self.deliver)

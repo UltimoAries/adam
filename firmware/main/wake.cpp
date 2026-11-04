@@ -6,6 +6,7 @@ extern "C" {
 #include "audio.h"
 #include "mic.h"
 #include "intercom.h"
+#include "barge.h"
 }
 #include <atomic>
 #include <algorithm>
@@ -22,6 +23,7 @@ extern "C" {
 extern const uint8_t model_data[] asm("_binary_wake_model_tflite_start");
 static QueueHandle_t audio_queue;
 static std::atomic<bool> enabled{true},feeding{false},initialized{false},resync{false};
+static std::atomic<unsigned> reply_blocks{0};
 static std::atomic<unsigned> detections{0},started_sessions{0},overflows{0},stack_min{0},loop_max_us{0};
 struct Samples { int16_t pcm[160]; };
 class Detector final : public esphome::micro_wake_word::MicroWakeWord {};
@@ -53,9 +55,11 @@ static void task(void *)
     int64_t cooldown=0;
     for (;;) {
         int64_t now=esp_timer_get_time();
-        bool busy=intercom_active()?!intercom_connected():
+        bool reply=barge_ready();
+        bool busy=reply?false:intercom_active()?!intercom_connected():
             headend_busy() || audio_is_playing() || audio_clip_busy() || mic_recording();
-        if (busy) cooldown=now+1000000;
+        if (reply) cooldown=0;
+        else if (busy) cooldown=now+1000000;
         bool paused=!enabled || busy || now<cooldown;
         if (resync.exchange(false)) { paused=true; cooldown=now+1000000; }
         if (paused && detector->is_running()) detector->stop();
@@ -80,6 +84,7 @@ void wake_init(void)
 void wake_feed(const int16_t *stereo,unsigned frames)
 {
     if (!audio_queue || !feeding || frames!=160) return;
+    if (barge_active()) ++reply_blocks;
     Samples samples;for (unsigned i=0;i<160;++i) samples.pcm[i]=stereo[i*2];
     if (xQueueSend(audio_queue,&samples,0)!=pdTRUE) { ++overflows;resync=true;xQueueReset(audio_queue); }
 }
@@ -89,6 +94,7 @@ const char *wake_model_id(void) { return initialized?(enabled?WAKE_MODEL_ID:"dis
 const char *wake_label(void) { return initialized?(enabled?WAKE_PHRASE:"Wake disabled"):"Wake unavailable"; }
 void wake_status(void)
 {
+    printf("OK wake_reply blocks=%u\n",reply_blocks.load());
     printf("OK wake ready=%d enabled=%d model=%s development=%d feeding=%d detections=%u sessions=%u queue_overflows=%u stack_min=%u loop_max_us=%u\n",
         (int)initialized.load(),(int)enabled.load(),wake_model_id(),WAKE_DEVELOPMENT,(int)feeding.load(),detections.load(),started_sessions.load(),overflows.load(),stack_min.load(),loop_max_us.load());
 }

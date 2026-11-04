@@ -17,6 +17,7 @@ class SessionError(ValueError):
 class Trigger(str, Enum):
     TOUCH = 'touch'
     WAKE = 'wake'
+    FOLLOWUP = 'followup'
 
 
 @dataclass(frozen=True)

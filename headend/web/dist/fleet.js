@@ -39,7 +39,7 @@ function units(){
   const signature=JSON.stringify(fleet.units.map(({seen,...u})=>u));
   if(signature===unitSignature)return;unitSignature=signature;
   $('units').replaceChildren();
-  if(!fleet.units.length)$('units').append(el('div','Pair the USB-connected box to add your first unit.','empty'));
+  if(!fleet.units.length)$('units').append(el('div','Install ADAM firmware, set up Wi-Fi, then pair a unit using USB on the head-end computer.','empty'));
   for(const unit of fleet.units){
     const card=el('div','','unit-card');card.dataset.id=unit.id;
     const label=el('label','','unit-select'),check=document.createElement('input');check.type='checkbox';check.checked=selected.has(unit.id);check.setAttribute('aria-label',`Select ${unit.name}`);
@@ -89,7 +89,7 @@ function histories(){
       item.querySelector('.title').textContent=names.get(row.unit_id)||'Unit';badge.textContent=row.status||row.state;badge.className=`badge ${row.status||row.state}`;
       if(key==='sessions'){
         item.querySelector('p').textContent=row.text||row.error||(row.status==='listening'?'Receiving live audio…':row.status==='no_speech'?'No speech detected.':'Waiting for local transcription…');
-        item.querySelector('small').textContent=`${row.trigger==='wake'?`Wake · ${row.model_id}`:'Touch / remote test'} · ${new Date(row.started*1000).toLocaleTimeString()}${row.preroll_ms?` · ${(row.preroll_ms/1000).toFixed(1)} sec pre-roll`:''}${row.capture_ms?` · ${(row.capture_ms/1000).toFixed(1)} sec capture`:''}${row.endpoint_reason?` · End: ${row.endpoint_reason.replace('_',' ')}`:''}${row.inference_ms?` · ${(row.inference_ms/1000).toFixed(2)} sec recognition`:''}`;
+        item.querySelector('small').textContent=`${row.trigger==='wake'?`Wake · ${row.model_id}`:row.trigger==='followup'?'Follow-up listening':'Touch / remote test'} · ${new Date(row.started*1000).toLocaleTimeString()}${row.preroll_ms?` · ${(row.preroll_ms/1000).toFixed(1)} sec pre-roll`:''}${row.capture_ms?` · ${(row.capture_ms/1000).toFixed(1)} sec capture`:''}${row.endpoint_reason?` · End: ${row.endpoint_reason.replace('_',' ')}`:''}${row.inference_ms?` · ${(row.inference_ms/1000).toFixed(2)} sec recognition`:''}`;
         if(row.timings_ms){const t=row.timings_ms;for(const [key,label] of [['transcribed','transcript'],['ha_result','HA result'],['reply_ready','reply ready'],['page_playing','playback accepted']])if(t[key]!=null)item.querySelector('small').textContent+=` · ${label} ${(t[key]/1000).toFixed(2)}s after capture`;}
         let progress=item.querySelector('.progress');if(row.status==='listening'){if(!progress){progress=el('div','','progress');progress.append(el('span'));item.append(progress);}progress.firstChild.style.width=`${Math.min(100,100*row.received/row.expected)}%`;}else progress?.remove();
         if((row.clip_id||row.archive_id)&&row.archive_status!=='not_saved'&&!item.querySelector('audio')){const player=document.createElement('audio');player.controls=true;player.preload='none';player.src=row.clip_id?`/api/clips/${row.clip_id}/audio`:`/api/training/recordings/${row.archive_id}/audio`;player.setAttribute('aria-label','Play received voice clip');item.append(player);}
@@ -101,7 +101,7 @@ function histories(){
           const delivery=fleet.pages.find(p=>p.id===row.reply.page_id);
           reply.replaceChildren(el('p',`Answer · ${delivery?.state||row.reply.status}: ${row.reply.text||row.reply.error||'Checking your question…'}`));
           if(row.reply.delivery_error)reply.append(el('p',row.reply.delivery_error));
-          if(row.reply.source){const source=el('a',row.reply.source);source.href=row.reply.source_url;source.target='_blank';source.rel='noopener noreferrer';reply.append(source);}
+          if(row.reply.source_url){const source=el('a',row.reply.source);source.href=row.reply.source_url;source.target='_blank';source.rel='noopener noreferrer';reply.append(source);}
         }
       }else{
         item.querySelector('p').textContent=row.kind==='text'?row.text:'Recorded voice message';

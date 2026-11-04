@@ -177,6 +177,7 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
     voices = voices or VoiceService(state.directory/'voices', builtin=models/'voices'/'basic-english'/'1.0.0')
     speech = speech or RoutedSpeech(services, voices)
     fleet = Fleet(state,store,jobs,bridge,f'http://{lan_ip or "127.0.0.1"}:8765',speech,voices,panel_updates=not testing)
+    fleet.status_queries.models = services
     require_auth = not testing if auth_required is None else auth_required
     def voice_busy():
         return bool(jobs.active or fleet.active or any(
@@ -199,6 +200,7 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
         fleet.intercom.close()
         await asyncio.to_thread(jobs.pool.shutdown,wait=True,cancel_futures=False)
         await asyncio.to_thread(fleet.recordings.close)
+        await asyncio.to_thread(fleet.status_queries.close)
         fleet.home_assistant.close(); fleet.timers.close()
         fleet.panel.close()
         fleet.conversation.close()
