@@ -72,7 +72,8 @@ Run from the repository root:
 
 The browser check uses a temporary server/database, synthetic lights, and a
 separate headless Chrome profile. It covers room picking, dropdown assignment,
-canvas drop handling, on/off rendering, unavailable status, reload persistence,
-mobile layout, and removal. It asserts zero device actions. Screenshots and
+native mouse drag-and-drop, on/off rendering, unavailable status, reload persistence,
+mobile layout, removal, failed-poll recovery, assignment after WebGL loss, and
+clearing map details on logout. It asserts zero device actions. Screenshots and
 logs stay in ignored `artifacts/map-lights/`. Set `CHROME_BIN` if needed; the
 script requires the head-end environment plus `websockets` and Chrome/Chromium.

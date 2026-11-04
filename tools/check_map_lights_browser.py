@@ -127,13 +127,28 @@ async def check():
                 await js("fetch('/api/fixture/map-state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({'light.lounge':'on'})})")
                 await until("JSON.parse(document.querySelector('#mapViewport canvas').dataset.lightStates).living==='on'")
                 await screenshot('desktop-on.png')
+                # A failed dashboard poll must remove stale illumination, then recover.
+                await js("window.mapOriginalFetch=window.fetch;window.fetch=(input,options)=>String(input)==='/api/map/lights'?Promise.reject(new Error('fixture connection lost')):window.mapOriginalFetch(input,options)")
+                await until("JSON.parse(document.querySelector('#mapViewport canvas').dataset.lightStates).living==='unknown'")
+                assert await js("document.querySelector('[data-room=living]').textContent.includes('Status unavailable')")
+                await js("window.fetch=window.mapOriginalFetch")
+                await until("JSON.parse(document.querySelector('#mapViewport canvas').dataset.lightStates).living==='on'")
                 # Real pointer selection uses projected floor coordinates and raycasting.
                 point = await js("(()=>{const c=document.querySelector('#mapViewport canvas'),p=JSON.parse(c.dataset.rooms).find(r=>r.id==='study'),b=c.getBoundingClientRect();return {x:b.left+p.x,y:b.top+p.y};})()")
                 await cdp('Input.dispatchMouseEvent', dict(type='mousePressed', button='left', clickCount=1, **point))
                 await cdp('Input.dispatchMouseEvent', dict(type='mouseReleased', button='left', clickCount=1, **point))
                 await until("document.querySelector('#mapRoomSelect').value==='study'")
-                # The canvas drop path uses the same room hit testing as a physical drag.
-                await js("(()=>{const c=document.querySelector('#mapViewport canvas'),p=JSON.parse(c.dataset.rooms).find(r=>r.id==='kitchen'),b=c.getBoundingClientRect(),d=new DataTransfer();d.setData('application/x-adam-light','light.lounge');c.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,clientX:b.left+p.x,clientY:b.top+p.y,dataTransfer:d}));})()")
+                # Exercise a native HTML5 drag from the card into the 3D room.
+                await js("document.querySelector('#mapViewport').scrollIntoView({block:'start'})")
+                source = await js("(()=>{const b=document.querySelector('[data-entity=\"light.lounge\"] strong').getBoundingClientRect();return {x:b.left+20,y:b.top+5};})()")
+                target_point = await js("(()=>{const c=document.querySelector('#mapViewport canvas'),p=JSON.parse(c.dataset.rooms).find(r=>r.id==='kitchen'),b=c.getBoundingClientRect();return {x:b.left+p.x,y:b.top+p.y};})()")
+                await cdp('Input.dispatchMouseEvent', dict(type='mouseMoved', **source))
+                await cdp('Input.dispatchMouseEvent', dict(type='mousePressed', button='left', buttons=1, clickCount=1, **source))
+                for step in range(1, 9):
+                    pos = {k: source[k]+(target_point[k]-source[k])*step/8 for k in ('x','y')}
+                    await cdp('Input.dispatchMouseEvent', dict(type='mouseMoved', button='left', buttons=1, **pos))
+                    await asyncio.sleep(.05)
+                await cdp('Input.dispatchMouseEvent', dict(type='mouseReleased', button='left', buttons=0, clickCount=1, **target_point))
                 await until("document.querySelector('[data-room=kitchen]')?.textContent.includes('1 of 1 on') && document.querySelector('[data-room=living]')?.textContent.includes('No lights assigned')")
                 await cdp('Page.reload')
                 await until("document.querySelector('[data-room=kitchen]')?.textContent.includes('1 of 1 on')")
@@ -147,9 +162,17 @@ async def check():
                 await js("document.querySelector('[data-remove=\"light.lounge\"]').click()")
                 await until("document.querySelector('[data-room=kitchen]')?.textContent.includes('No lights assigned')")
                 assert await js("fetch('/api/fixture/map-state',{method:'PUT',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(r=>r.actions.length)") == 0
+                # Losing WebGL leaves the accessible assignment controls working.
+                await js("document.querySelector('#mapViewport canvas').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext()")
+                await until("!document.querySelector('#mapFallback').hidden")
+                await js("document.querySelector('#mapLightSelect').value='light.bedroom';document.querySelector('#mapRoomSelect').value='bedroom';document.querySelector('#mapRoomSelect').dispatchEvent(new Event('change'));document.querySelector('#mapAssign').click()")
+                await until("document.querySelector('[data-room=bedroom]')?.textContent.includes('All lights off')")
+                await js("document.querySelector('#logout').click()")
+                await until("document.querySelector('#dashboard').hidden && document.querySelector('#mapLightList').children.length===0")
+                assert await js("fetch('/api/map/lights').then(r=>r.status)") == 401
                 assert not errors, errors
                 print(json.dumps(dict(assignment=True, illumination=True, room_picking=True, canvas_drop=True,
-                    persistence=True, unavailable=True, mobile=True, removal=True, device_actions=0, javascript_errors=0)))
+                    persistence=True, unavailable=True, mobile=True, removal=True, native_drag=True, failure_recovery=True, webgl_fallback=True, logout_clears=True, device_actions=0, javascript_errors=0)))
         finally:
             if chrome:
                 chrome.terminate(); chrome.wait(timeout=10)

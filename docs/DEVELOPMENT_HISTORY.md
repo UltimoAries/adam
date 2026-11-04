@@ -1,6 +1,6 @@
 # Development history and change log
 
-## In development — Room light placement on the Monitor Map
+## Feature branch trial — Room light placement on the Monitor Map
 
 The `feature/map-room-lights` branch adds persistent light assignments to the
 sample house's four rooms, through dropdowns, room selection, or desktop drag
@@ -8,12 +8,28 @@ and drop. Live status drives amber room illumination and brightness, with
 unavailable readings distinguished from off. Multiple lights can share a room;
 moving/removing a placement changes only map metadata. Status reads are cached
 for five seconds and assignments are isolated by HA origin and stable entity
-ID. See [Room lights on the map](MAP_LIGHTS.md). This feature is not yet deployed.
+ID. See [Room lights on the map](MAP_LIGHTS.md).
 
 Validation: 277 head-end tests passed, along with JavaScript syntax checks and
 isolated desktop/mobile browser checks for placement, room picking, canvas drops,
 illumination, unavailable status, persistence, and removal. No device actions
-were sent during these tests.
+were sent during the isolated tests.
+
+November 3 deployment trial: runtime commit `ec50284` was deployed to the Pi
+with the previous source and container image retained for rollback. All 80
+packaged head-end files matched the running image, and health/recognizer checks
+passed. One explicitly authorized light was toggled off and back on; the live
+browser removed/restored room illumination in about 3.9/3.8 seconds. Original
+power and brightness were restored. Its assignment survived page reload and
+a container restart. Ten map reads with five concurrent callers succeeded
+(median 70.5 ms, maximum 188 ms), alongside resource and read-only status checks.
+
+Expanded isolated browser checks passed native mouse drag-and-drop, connection
+failure/recovery without stale illumination, assignment after WebGL loss, and
+clearing map details on logout. No JavaScript errors were observed. The branch
+is ready for review as a first light-only implementation on the four sample
+rooms; custom room/model editing and other device types remain out of scope.
+The deployment trial did not merge the feature into `main`.
 
 ## November 3, 2026 — Natural Home Assistant commands and model preview
 
