@@ -32,6 +32,7 @@ from .dialogue import Dialogue
 from .command_reply import command_reply
 from .context_actions import resolve as resolve_context_action
 from .intent_preview import add_intent_preview_routes
+from .map_lights import MapLights, add_map_light_routes
 
 
 class Credentials(BaseModel):
@@ -89,6 +90,8 @@ class Fleet:
         add_training_routes(self.router,self.archive,self.jobs,self.state)
         add_conversation_routes(self.router,self.conversation)
         add_intent_preview_routes(self.router, self)
+        self.map_lights = MapLights(state, self.home_assistant)
+        add_map_light_routes(self.router, self.map_lights)
 
     def transcription_done(self, entry, job):
         mark(entry, 'transcribed')

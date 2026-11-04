@@ -15,6 +15,8 @@ archive.
   across host cores between samples; memory excludes reclaimable Linux cache.
   Storage covers the filesystem holding `headend/data`, not every attached drive.
   Linux and Windows hosts are supported; unavailable metrics show as unavailable.
+  The 3D map also supports persistent light-to-room assignments, live room
+  illumination, and unavailable-state indicators. See [MAP_LIGHTS.md](../docs/MAP_LIGHTS.md).
 - **Model services (`/models`)**: One GPU/Pi preference and installed-model
   dropdowns select speech recognition (Speaches / faster-whisper) and general
   conversation (Ollama) on one GPU computer. Both routes share a failure cooldown
@@ -61,6 +63,8 @@ Docker deployment.
 - `system_monitor.py`: Cached host CPU/memory counters and data-filesystem capacity
   without external commands or blocking sampling. In the Pi Docker deployment,
   CPU/memory describe the host, not just the ADAM container or GPU computer.
+- `map_lights.py`: HA-origin-scoped room placements and cached read-only light
+  status for the sample map. Assigning or removing a light never operates it.
 - `fleet.py`, `state.py`, `reconnect_unit.py`: Administrator sessions, SQLite
   account/unit persistence, authenticated device polling/streaming, five-minute
   page expiry, playback acknowledgements, and credential-rotating USB reconnects.

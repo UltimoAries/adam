@@ -96,6 +96,7 @@ stereo channels and does not support shared-clock loopback. USB snapshots remain
 | `fleet_ui_fixture.py` | Isolated FastAPI fixture server launched automatically by `check_fleet_browser.py` on `127.0.0.1:8766` using temporary test state and fake hardware/services. |
 | `test_gpu_control.py` | Standard `unittest` suite for the Windows GPU model-host tray controller (`deploy/model-host/adam_control.pyw`), runnable without live services. |
 | `test_idf_args.ps1` | Verifies both firmware wrappers preserve `-p` / `-Port`, build arguments, and board isolation using a mock `idf.py`; never opens USB or flashes a device. |
+| `check_map_lights_browser.py` | Isolated desktop/mobile map tests with synthetic lights: placement, room picking, canvas drops, illumination, unavailable status, reload persistence, and removal. Uses a temporary Chrome profile and never operates devices. |
 | `check_voice_runtime.py` | Offline integration check that packages, imports, previews, pages, removes, and locally transcribes a real Piper voice in an isolated temp directory. |
 | `check_pi_host.py` | Read-only Raspberry Pi preflight reporting OS, memory, disk, thermals, throttling flags, and Docker/Compose availability. |
 | `check_pi_runtime.py` | Read-only container/local check (`--headend-dir` / `ADAM_HEADEND_DIR`) verifying SQLite/archive SHA-256 integrity, Home Assistant reachability, and Piper + Faster-Whisper latency. |

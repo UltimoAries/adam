@@ -28,7 +28,7 @@
     </div>
     <p class="resource-scope">Head-end computer · refreshes every 5 seconds · storage is the drive containing ADAM data</p>
   </section>
-  <p class="help">Explore a sample home. Your house model and room devices will live here.</p>
+  <p class="help">Assign your lights to rooms in this sample home. Rooms glow when an assigned light is on.</p>
   <div class="map-toolbar" role="group" aria-label="Map controls">
     <div class="map-modes"><button id="mapOrbit" aria-pressed="true" disabled>Orbit &amp; tilt</button><button id="mapPan" aria-pressed="false" disabled>Pan</button></div>
     <div class="map-views"><button id="mapZoomIn" aria-label="Zoom in" disabled>+</button><button id="mapZoomOut" aria-label="Zoom out" disabled>&minus;</button><button id="mapTop" disabled>Top view</button><button id="mapReset" disabled>Reset view</button></div>
@@ -37,7 +37,20 @@
     <div id="mapFallback" class="map-fallback" role="status">Loading the sample house viewer&hellip;</div>
     <span class="map-caption" aria-hidden="true">SAMPLE HOME <span>/</span> LEVEL 01</span>
   </div>
-  <div class="map-foot"><p id="mapHelp">Drag to orbit and tilt. Right-drag to pan. Scroll to zoom. Touch: one finger to orbit, two to pan or zoom.</p><span>Preview &middot; no devices placed</span></div>
+  <div class="map-foot"><p id="mapHelp">Drag to orbit and tilt. Right-drag to pan. Scroll to zoom. Touch: one finger to orbit, two to pan or zoom.</p><span>Warm glow = lights on</span></div>
+  <div id="mapRooms" class="map-rooms" aria-label="Room light status"></div>
+  <section class="map-light-panel" aria-labelledby="mapLightsTitle">
+    <div class="map-light-heading"><h3 id="mapLightsTitle">Room lights</h3><span id="mapLightStatus" role="status">Loading lights…</span></div>
+    <form id="mapAssignForm" class="map-assign-form">
+      <label>Light<select id="mapLightSelect" required disabled><option value="">Choose a light</option></select></label>
+      <label>Room<select id="mapRoomSelect" required disabled><option value="">Choose a room</option></select></label>
+      <button id="mapAssign" class="secondary" disabled>Assign light</button>
+    </form>
+    <p class="help">Choose a light and a room, or drag a light below onto a room in the map. Tap a room to select it. Assigning changes only this map.</p>
+    <p id="mapAssignStatus" role="status" aria-live="polite"></p>
+    <div id="mapLightList" class="map-light-list" aria-label="Lights and assignments"></div>
+    <p id="mapLightEmpty" class="help" hidden>No lights are available. <a href="/home-assistant">Import and enable lights in Home Assistant settings</a> to begin.</p>
+  </section>
   <details class="map-keyboard"><summary>Keyboard controls</summary><p>Focus the map with Tab. Arrow keys pan; Shift + arrows orbit and tilt. + / &minus; zoom, T shows the top view, and R resets the view.</p></details>
 </section>
 <section class="panel command-panel" aria-labelledby="commandTitle">

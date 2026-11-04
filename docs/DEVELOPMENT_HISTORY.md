@@ -1,5 +1,20 @@
 # Development history and change log
 
+## In development — Room light placement on the Monitor Map
+
+The `feature/map-room-lights` branch adds persistent light assignments to the
+sample house's four rooms, through dropdowns, room selection, or desktop drag
+and drop. Live status drives amber room illumination and brightness, with
+unavailable readings distinguished from off. Multiple lights can share a room;
+moving/removing a placement changes only map metadata. Status reads are cached
+for five seconds and assignments are isolated by HA origin and stable entity
+ID. See [Room lights on the map](MAP_LIGHTS.md). This feature is not yet deployed.
+
+Validation: 277 head-end tests passed, along with JavaScript syntax checks and
+isolated desktop/mobile browser checks for placement, room picking, canvas drops,
+illumination, unavailable status, persistence, and removal. No device actions
+were sent during these tests.
+
 ## November 3, 2026 — Natural Home Assistant commands and model preview
 
 - Expanded deterministic parsing for polite requests such as "Can we set that

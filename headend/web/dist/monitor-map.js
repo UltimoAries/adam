@@ -1,4 +1,5 @@
 // Local-only sample scene. Replace buildSampleHome when house-model import is added.
+import {mapLights} from './map-lights.js';
 const viewport = document.getElementById('mapViewport');
 const fallback = document.getElementById('mapFallback');
 const dashboard = document.getElementById('dashboard');
@@ -18,7 +19,7 @@ async function startMap() {
     const canvas = renderer.domElement;
     canvas.tabIndex = 0;
     canvas.setAttribute('role', 'region');
-    canvas.setAttribute('aria-label', 'Interactive sample house. Pan, zoom, and orbit the floor plan.');
+    canvas.setAttribute('aria-label', 'Interactive sample house. Select rooms, place lights, pan, zoom, and orbit.');
     canvas.setAttribute('aria-describedby', 'mapHelp');
     viewport.prepend(canvas);
     const controls = new OrbitControls(camera, canvas);
@@ -35,7 +36,7 @@ async function startMap() {
     const grid = new THREE.GridHelper(40, 40, 0x29434e, 0x182f39);
     grid.position.y = -0.16;
     scene.add(grid);
-    buildSampleHome(THREE, scene);
+    const rooms = buildSampleHome(THREE, scene);
 
     // No animation loop: draw only on interaction/resize, and never while signed out.
     let frame = 0;
@@ -47,6 +48,10 @@ async function startMap() {
         renderer.render(scene, camera);
         // Camera state also makes local UI diagnostics possible without exposing a global API.
         canvas.dataset.view = JSON.stringify({position: camera.position.toArray(), target: controls.target.toArray()});
+        canvas.dataset.rooms = JSON.stringify(rooms.map(room => {
+          const point = room.floor.position.clone().project(camera);
+          return {id: room.id, x: (point.x + 1) * canvas.clientWidth / 2, y: (1 - point.y) * canvas.clientHeight / 2};
+        }));
       });
     }
     const fitDistance = () => Math.max(19, 24 / camera.aspect);
@@ -100,6 +105,46 @@ async function startMap() {
       else zoom(key === '-' ? 1.25 : 0.8);
     });
     controls.addEventListener('change', render);
+    const raycaster = new THREE.Raycaster();
+    function roomAt(event) {
+      const rect = canvas.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1,
+        1 - (event.clientY - rect.top) / rect.height * 2), camera);
+      return raycaster.intersectObjects(rooms.map(room => room.floor), false)[0]?.object.userData.roomId;
+    }
+    let pressed = null;
+    canvas.addEventListener('pointerdown', event => {pressed = event.button === 0 ? [event.clientX, event.clientY] : null;});
+    canvas.addEventListener('pointercancel', () => {pressed = null;});
+    canvas.addEventListener('pointerup', event => {
+      if (pressed && Math.hypot(event.clientX - pressed[0], event.clientY - pressed[1]) < 5) {
+        const room = roomAt(event); if (room) mapLights.selectRoom(room);
+      }
+      pressed = null;
+    });
+    canvas.addEventListener('dragover', event => {
+      if (event.dataTransfer.types.includes('application/x-adam-light') && roomAt(event)) {
+        event.preventDefault(); event.dataTransfer.dropEffect = 'move';
+      }
+    });
+    canvas.addEventListener('drop', event => {
+      event.preventDefault();
+      const room = roomAt(event), entity = event.dataTransfer.getData('application/x-adam-light');
+      if (room) mapLights.drop(entity, room);
+    });
+    mapLights.subscribe((data, selected) => {
+      for (const room of rooms) {
+        const state = data?.rooms.find(r => r.id === room.id);
+        const on = state?.state === 'on', unknown = state?.state === 'unknown';
+        room.floor.material.color.setHex(on ? 0x89704a : unknown ? 0x394653 : room.color);
+        room.floor.material.emissive.setHex(on ? 0xffb94f : 0x000000);
+        room.floor.material.emissiveIntensity = on ? 0.25 + 0.65 * (state.brightness || 0) : 0;
+        room.light.intensity = on ? 3 + 5 * (state.brightness || 0) : 0;
+        room.outline.material.color.setHex(selected === room.id ? 0xb7f4e4 : unknown ? 0xbe9a6a : on ? 0xffcc7a : 0x45616b);
+        room.floor.userData.state = state?.state || 'unassigned';
+      }
+      canvas.dataset.lightStates = JSON.stringify(Object.fromEntries(rooms.map(r => [r.id, r.floor.userData.state])));
+      render();
+    });
     new ResizeObserver(resize).observe(viewport);
     document.addEventListener('visibilitychange', render);
     canvas.addEventListener('webglcontextlost', event => {
@@ -135,9 +180,18 @@ function buildSampleHome(T, scene) {
   }
   // Roofless cutaway: low walls keep the rooms visible when looking around inside.
   box(0, -0.10, 0, 12.3, 0.2, 8.3, 0x29454d, true);
-  box(-2.55, 0.015, 0, 6.7, 0.03, 7.8, 0x244c4e);
-  box(3.5, 0.015, -2, 4.7, 0.03, 3.8, 0x354953);
-  box(3.5, 0.015, 2, 4.7, 0.03, 3.8, 0x414b4e);
+  const rooms = [
+    {id: 'living', x: -2.55, z: 1.8, w: 6.7, d: 4.2, color: 0x244c4e},
+    {id: 'kitchen', x: -2.55, z: -2.15, w: 6.7, d: 3.5, color: 0x244c4e},
+    {id: 'bedroom', x: 3.5, z: -2, w: 4.7, d: 3.8, color: 0x354953},
+    {id: 'study', x: 3.5, z: 2, w: 4.7, d: 3.8, color: 0x414b4e},
+  ].map(room => {
+    const floor = box(room.x, 0.015, room.z, room.w, 0.03, room.d, room.color, true);
+    floor.userData.roomId = room.id;
+    const light = new T.PointLight(0xffcf83, 0, Math.min(room.w, room.d), 2);
+    light.position.set(room.x, 1.5, room.z); home.add(light);
+    return {...room, floor, outline: floor.children[0], light};
+  });
   const wall = (x, z, w, d) => box(x, 0.5, z, w, 1, d, 0x9ebbb7, true);
   wall(0, -4, 12.2, 0.15); wall(-6, 0, 0.15, 8); wall(6, 0, 0.15, 8);
   wall(-3.7, 4, 4.6, 0.15); wall(3.1, 4, 5.8, 0.15);
@@ -169,6 +223,7 @@ function buildSampleHome(T, scene) {
   }
   label('LIVING', -2.4, 3.1); label('KITCHEN', -2.5, -0.8);
   label('BEDROOM', 3.6, -0.7); label('STUDY', 3.5, 3.1);
+  return rooms;
 }
 
 const observer = new MutationObserver(() => {

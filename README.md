@@ -77,6 +77,9 @@ speaker/microphone unit and a Python head-end.
   playback acknowledgements, and explore the **Monitor Map** 3D floor-plan preview.
   CPU, physical memory, and data-drive usage appear above the map, refreshing
   every five seconds while the signed-in dashboard is visible.
+  Assign imported lights to rooms by dropdown or drag-and-drop. Saved placements
+  show live on/off status, warm room illumination, and unavailable readings.
+  See [Room lights on the map](docs/MAP_LIGHTS.md).
 - **Durable training archive (`/training`):** Optional bounded archive of
   original device recordings, transcripts, wake-phrase boundary markers, and
   human review labels for future wake-word/speech tuning.
@@ -89,7 +92,7 @@ speaker/microphone unit and a Python head-end.
 > **Status notes:** The embedded `Hey Adam` wake model (`hey_adam-20261030-c60f0456`)
 > loads and handles live commands reliably; formal held-out false-accept /
 > false-reject benchmarking remains in progress (see [docs/HEY_ADAM_PILOT.md](docs/HEY_ADAM_PILOT.md)).
-> Custom 3D house-model import and map device placement are planned future work.
+> Custom 3D house-model import is planned; light placement uses the current sample rooms.
 > Paging remains message-based. Live intercom is experimental and requires v31
 > firmware on both speakers; SIP is not implemented.
 > All speech inference runs on your LAN; Open-Meteo weather lookups and one-time
