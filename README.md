@@ -17,7 +17,7 @@ speaker/microphone unit and a Python head-end.
   read actual service data; “Which one?” and “Is it back online?” retain brief,
   isolated context. See [Status questions](docs/STATUS_QUESTIONS.md).
 
-- **Type to ADAM:** A phone-friendly command box below the Monitor Map on the signed-in
+- **Type to ADAM:** A phone-friendly command box on the signed-in
   home page runs the same commands as voice, without a wake word. Replies appear
   on the page; optionally speak them through a selected unit. Supports Home
   Assistant controls, timers, information queries, and speaker-to-speaker calls.
@@ -74,11 +74,16 @@ speaker/microphone unit and a Python head-end.
   Open-Meteo current weather and forecasts in your chosen Piper voice.
 - **Multi-unit paging & dashboard (`/`):** Pair speaker units over USB, send
   typed or browser-recorded voice announcements with five-minute expiry and
-  playback acknowledgements, and explore the **Monitor Map** 3D floor-plan preview.
-  CPU, physical memory, and data-drive usage appear above the map, refreshing
+  playback acknowledgements, and open **Menu → Map** for movable light markers,
+  live status, and marker toggles on a private PNG or the fallback reference plan.
+  CPU, physical memory, and data-drive usage remain on Home, refreshing
   every five seconds while the signed-in dashboard is visible.
   Assign imported lights to rooms by dropdown or drag-and-drop. Saved placements
   show live on/off status, warm room illumination, and unavailable readings.
+  Private maps include front/back outdoor placement bands. Edit mode shows the
+  placement inspector; viewing hides it and expands the map. Custom PNG and
+  `layout.json` setup is currently manual; image upload and guided layout creation
+  still need to be finished.
   See [Room lights on the map](docs/MAP_LIGHTS.md).
 - **Durable training archive (`/training`):** Optional bounded archive of
   original device recordings, transcripts, wake-phrase boundary markers, and

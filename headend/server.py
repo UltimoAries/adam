@@ -352,6 +352,10 @@ def create_app(data_directory=None, provider_factory=None, device=None, testing=
     def bench():
         return FileResponse(ROOT/'web'/'dist'/'bench.html')
 
+    @app.get('/map')
+    def floor_plan():
+        return FileResponse(ROOT/'web'/'dist'/'map.html')
+
     @app.get('/voices')
     def voice_library():
         return FileResponse(ROOT/'web'/'dist'/'voices.html')

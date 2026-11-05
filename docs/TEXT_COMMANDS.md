@@ -1,7 +1,7 @@
 # Type to ADAM
 
 Sign in to ADAM from a phone or desktop browser. **Type to ADAM** is directly below
-the Monitor Map on the home page. Enter a command and tap **Send command**.
+the resource readings on the home page. Enter a command and tap **Send command**.
 The wake phrase is optional; no browser microphone permission is needed.
 
 Examples:

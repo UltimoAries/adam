@@ -1,5 +1,114 @@
 # Development history and change log
 
+## November 4, 2026 — Outdoor light placement and expanded map view
+
+Private maps now have a bordered outdoor area with full-width Front outside and
+Back outside placement bands that wrap around the sides. The expanded viewport
+preserves existing interior coordinates and placement identity. Outdoor markers
+use the same authenticated light inventory, status, and bounded action routes.
+
+Outside Edit mode, the inspector is hidden and the map expands without stretching
+the artwork's proportions. Room clicks do nothing; only individual markers send
+light commands. Command feedback remains visible above the map. Edge labels stay
+inside the border.
+
+All 18 map/API tests passed. Browser checks verified front/back drag placement,
+reload persistence, unchanged indoor alignment, panel visibility and expansion,
+marker controls, inactive room clicks, mobile layout, and session expiry.
+Deployed with rollback backups; 81 files matched, health/model readiness passed,
+and live desktop/mobile checks passed without JavaScript errors. Verification
+sent no device commands and changed no placements. Camera and Ollama containers
+were unchanged.
+
+## November 4, 2026 — Map artwork cleanup and stronger lighting contrast
+
+Removed the title/area panel and garage square-footage text from the private
+image while preserving its dimensions and marker alignment. Increased warm
+illumination and on-marker glow, deepened confirmed-off room shading, and added
+gentle shading to rooms without assigned lights. Dimmer intensity still follows
+reported brightness, and unknown states retain their separate presentation.
+
+Private-map browser checks passed marker switching, brightness, image alignment,
+authentication, and mobile layout. Deployed to the Pi with rollback backups;
+all 81 runtime/private-map files matched and health/model readiness passed.
+Live desktop/mobile checks found no JavaScript errors. Verification changed no
+placements and sent no device commands; camera and Ollama were unchanged.
+
+## November 4, 2026 — Edit mode, marker switching, and room illumination
+
+The Map toolbar now explicitly toggles Edit mode. Editing enables placement,
+movement, and removal while disabling device controls; marker clicks only select.
+With editing off, clicking or keyboard-activating a marker sends a bounded on/off
+command. Pending commands wait for refreshed status before further input is
+enabled. Unavailable lights cannot be toggled.
+
+Room polygons now darken confirmed-off rooms and add a brightness-sensitive warm
+glow around on-light markers. Rooms with unknown status lose stale illumination,
+and unassigned rooms retain the original artwork. The private floor-plan image
+and saved marker positions are unchanged.
+
+Validation: all 17 map/API tests and isolated browser checks passed, including
+edit-only movement, normal marker toggles, pending-command handling, and room
+illumination at different brightness levels. Deployed to the Pi with rollback
+backups; all 81 runtime/private-map files verified and health/model readiness
+passed. Live desktop/mobile checks verified the edit toggle, room overlays, and
+nine-page navigation without JavaScript errors. Existing placements were
+preserved; live verification sent no light commands. Camera and Ollama containers
+were unchanged.
+
+## November 4, 2026 — Private floor-plan image
+
+Added optional private PNG artwork and polygon room hit areas for the Map page.
+The supplied image was edited with built-in image generation to remove the
+compass and scale and make the exterior background transparent. The image,
+geometry, and complete edit prompt remain in ignored `headend/data/maps/`.
+The source contains only the reusable loader and renderer; image access requires
+authentication. Image/layout changes preserve earlier marker sets separately.
+
+Validation: 17 map/API tests passed, including polygon cutouts, private-image
+authentication, layout isolation, and invalid-configuration fallback. Isolated
+desktop/mobile previews verified the supplied image's aspect ratio, marker
+placement, and removal of the image from the page on session expiry. No real
+lights were operated and no Pi deployment was performed.
+
+November 4 Pi testing deployment: the updated head-end and private map were
+deployed with rollback image, source, database snapshot, and previous map files
+retained. All 81 deployed head-end/private-map files matched their manifests;
+retired map assets were absent. Health and recognition were ready, and the camera
+and Ollama containers were unchanged. Authenticated live desktop/mobile checks
+loaded the ten-room image map, found four imported lights with status available,
+verified navigation on nine pages, and observed no JavaScript errors. Private
+artwork rejected unauthenticated access. No light actions or marker changes were
+made during deployment verification. LAN addresses and deployment details remain
+in ignored local artifacts.
+
+## November 4, 2026 — Dedicated floor plan and shared navigation
+
+Replaced the four-room Three.js map on Home with a dedicated `/map` page based
+on the eight-space map-tap-control reference layout. SVG rooms and movable HTML
+light markers support mouse, touch, keyboard arrows, and room-selector placement.
+Markers show live on/off/unavailable state; the inspector exposes validated
+on/off, brightness, color temperature, and color controls when supported.
+Sliders require Apply, and placement never sends a device command.
+
+Marker coordinates persist in SQLite by HA origin and entity ID. Old assignments
+migrate into corresponding rooms once. Stale settings versions cannot retarget
+light actions after an HA connection change. Commands reuse the existing bounded
+Home Assistant service and its no-POST-retry behavior. Unknown/disconnected
+lights lose actionable state; session expiry clears the map.
+
+All nine pages now share one Menu and current-page label. Home retains resource
+readings, typed commands, speakers, timers, intercom, and paging. Removed the old
+map scripts/styles and unused Three.js assets; the historical prototype below
+describes those retired files. No firmware changes or new runtime dependencies.
+
+All 283 head-end tests passed. The final 15 map/API tests and isolated Chrome
+checks passed migration, placement,
+mouse/touch/keyboard movement, persistence, unavailable-state recovery, synthetic
+light commands, mobile layout, session expiry, and navigation on all nine pages.
+Browser checks observed zero JavaScript errors and sent two commands to mocked
+lights only. Changes are prepared locally; no live deployment was performed.
+
 ## Feature branch trial — Room light placement on the Monitor Map
 
 The `feature/map-room-lights` branch adds persistent light assignments to the

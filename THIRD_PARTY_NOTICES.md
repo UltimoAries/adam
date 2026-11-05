@@ -15,7 +15,6 @@ retains the notices and terms supplied with that material.
 | KissFFT (`vendor/wake/micro_speech_features/src/kiss_fft*`) | BSD-3-Clause (Copyright 2003–2010 Mark Borgerding; header in [kiss_fft.c](vendor/wake/micro_speech_features/src/kiss_fft.c)) |
 | Hey Jarvis reference wake model | [Apache-2.0](vendor/wake/micro_wake_models/LICENSE); [pinned wake sources](vendor/wake/sources.json) |
 | Embedded **Hey Adam** pilot wake model (`hey_adam-20261030-c60f0456`) | **Noncommercial personal/research use only** — trained with `microWakeWord` / `piper-sample-generator` using datasets that include noncommercial terms (`mchl914/fma_xsmall`, `agkphysics/AudioSet`, `MIT_environmental_impulse_responses`, `LibriTTS-R`); see [pilot notes](docs/HEY_ADAM_PILOT.md) and [manifest](firmware/main/wake_model.json) |
-| Three.js 0.180.0 and OrbitControls | [MIT](headend/web/dist/vendor/three/LICENSE); [source URLs and SHA-256](headend/web/dist/vendor/three/provenance.json) |
 | Wake training reference files (`mixednet.py`, `model_train_eval.py`) | [Apache-2.0](training/hey_adam/upstream/micro-wake-word-LICENSE) (Copyright Google Research Authors & Kevin Ahrendt); [source revisions](training/hey_adam/sources.json) |
 | Piper sample generator references | [MIT](training/hey_adam/upstream/piper-sample-generator-LICENSE.md) |
 | Basic English / Kristin voice (downloaded separately) | [Voice attribution and terms](headend/voice-licenses/basic-english.txt); [model manifest](headend/voice-models.json) |

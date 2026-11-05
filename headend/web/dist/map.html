@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Map · ADAM</title><link rel="stylesheet" href="/assets/fleet.css"><link rel="stylesheet" href="/assets/floor-plan.css">
+<link rel="stylesheet" href="/assets/navigation.css"><script src="/assets/navigation.js" defer></script>
+<script src="/assets/floor-plan.js" defer></script></head><body><main>
+<nav class="adam-navigation" data-adam-navigation aria-label="Main navigation"></nav>
+<header><div><span class="eyebrow">YOUR HOME, AT A GLANCE</span><h1>Floor plan<span>.</span></h1><p>Select a light. Make yourself at home.</p></div><span id="layoutName" class="badge">Floor plan</span></header>
+<section id="signIn" class="panel auth" hidden><h2>Sign in to view your map</h2><p><a href="/?next=%2Fmap">Sign in to ADAM</a> to place and control lights.</p></section>
+<p id="mapNotice" role="status" aria-live="polite"></p>
+<div id="mapDashboard" hidden>
+<div id="floorWorkspace" class="floor-workspace viewing">
+<section class="panel floor-panel" aria-label="Floor plan">
+<div class="floor-toolbar"><div><span id="layoutSummary" class="eyebrow">YOUR HOME · YOUR LIGHTS</span><p id="mapStatus" role="status">Loading light status…</p></div><button id="moveMode" aria-pressed="false">Edit mode: Off</button></div>
+<p id="mapHelp" class="help">Click a light marker to switch it on or off. Turn on Edit mode to place or move markers.</p>
+<div id="floorScroll" class="floor-scroll"><div id="floorSurface" class="floor-surface"><img id="floorArtwork" alt="Main floor plan" hidden><svg id="floorSvg" viewBox="0 0 1000 700" preserveAspectRatio="none" role="group" aria-label="Rooms in the floor plan"></svg><div id="lightMarkers"></div></div></div>
+<div class="floor-legend"><span><i data-state="on"></i>On</span><span><i data-state="off"></i>Off</span><span><i data-state="unavailable"></i>Unavailable</span></div>
+</section>
+<aside id="lightInspector" class="panel light-inspector" aria-labelledby="roomTitle" hidden>
+<span class="eyebrow">ROOM & LIGHT CONTROLS</span><h2 id="roomTitle">Living room</h2>
+<label for="roomChoice">Room</label><select id="roomChoice"></select>
+<div id="roomLights" class="room-light-list" aria-label="Lights in selected room"></div>
+<hr>
+<label for="lightChoice">Choose a light</label><select id="lightChoice"><option value="">Choose an imported light</option></select>
+<p id="lightEmpty" class="help" hidden><a href="/home-assistant">Import and enable lights in Device inventory</a> to get started.</p>
+<div id="lightDetail" hidden><h3 id="lightName"></h3><p id="lightState" class="help"></p>
+<div id="lightControls" class="light-controls"></div>
+<p id="controlResult" role="status" aria-live="polite"></p>
+<div id="placementActions" class="placement-actions" hidden><button id="placeLight">Place in this room</button><button id="removeLight" class="secondary">Remove marker</button></div>
+<p id="editHelp" class="help" hidden>Editing changes only the map. Drag or use arrow keys on a marker, or tap a room to place the selected light there. Turn off Edit mode to control lights.</p></div>
+</aside>
+</div></div></main></body></html>

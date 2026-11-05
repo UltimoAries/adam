@@ -10,13 +10,20 @@ archive.
   The **Type to ADAM** box shares voice command handlers and keeps short context
   isolated by signed-in session, browser tab, and selected speaker. See
   [TEXT_COMMANDS.md](../docs/TEXT_COMMANDS.md).
-  The Monitor Map includes host CPU/memory and ADAM data-drive usage; authenticated
+  Home includes host CPU/memory and ADAM data-drive usage; authenticated
   `/api/system/resources` readings are cached for five seconds. CPU is averaged
   across host cores between samples; memory excludes reclaimable Linux cache.
   Storage covers the filesystem holding `headend/data`, not every attached drive.
   Linux and Windows hosts are supported; unavailable metrics show as unavailable.
-  The 3D map also supports persistent light-to-room assignments, live room
-  illumination, and unavailable-state indicators. See [MAP_LIGHTS.md](../docs/MAP_LIGHTS.md).
+- **Map (`/map`)**: A private PNG or fallback reference floor plan with movable
+  light markers, live status, and marker on/off controls. Edit mode enables
+  mouse, touch, and keyboard placement; viewing hides the inspector and expands
+  the map. Positions persist on the head-end. The shared Menu
+  links all nine pages. See [MAP_LIGHTS.md](../docs/MAP_LIGHTS.md).
+  An optional private PNG and room polygons in `headend/data/maps/` replace the
+  reference layout. Artwork requires sign-in and is excluded from source packages.
+  Private maps include front/back outdoor placement bands. Image upload and
+  guided `layout.json` creation remain unfinished; setup currently uses manual files.
 - **Model services (`/models`)**: One GPU/Pi preference and installed-model
   dropdowns select speech recognition (Speaches / faster-whisper) and general
   conversation (Ollama) on one GPU computer. Both routes share a failure cooldown
@@ -63,8 +70,9 @@ Docker deployment.
 - `system_monitor.py`: Cached host CPU/memory counters and data-filesystem capacity
   without external commands or blocking sampling. In the Pi Docker deployment,
   CPU/memory describe the host, not just the ADAM container or GPU computer.
-- `map_lights.py`: HA-origin-scoped room placements and cached read-only light
-  status for the sample map. Assigning or removing a light never operates it.
+- `map_lights.py`: HA-origin-scoped light marker positions, room geometry, cached
+  status, and controls routed through the existing validated HA service.
+  Assigning or removing a marker never operates the light.
 - `fleet.py`, `state.py`, `reconnect_unit.py`: Administrator sessions, SQLite
   account/unit persistence, authenticated device polling/streaming, five-minute
   page expiry, playback acknowledgements, and credential-rotating USB reconnects.

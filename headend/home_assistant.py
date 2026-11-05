@@ -323,11 +323,13 @@ class HomeAssistantService:
             self.revision += 1
             return row
 
-    def device_action(self, entity_id, options):
+    def device_action(self, entity_id, options, expected_revision=None):
         if not self.slots.acquire(blocking=False): raise HTTPException(429, 'Home Assistant command queue is full')
         try:
             with self.lock:
                 settings, revision = self.settings(), self.revision
+                if expected_revision is not None and revision != expected_revision:
+                    raise HTTPException(409, 'Device settings changed. Refresh before controlling devices.')
                 row = next((r for r in self.inventory.rows(settings) if r['entity_id'] == entity_id), None)
             if self.closed or not settings.enabled: raise HTTPException(409, 'Enable Home Assistant control first')
             if not row or not row['imported'] or not row['enabled'] or not row['present']:

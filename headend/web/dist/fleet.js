@@ -13,8 +13,7 @@ const post=(path,body={})=>api(path,{method:'POST',headers:{'Content-Type':'appl
 const guard=fn=>async(...args)=>{try{await fn(...args);}catch(e){notice(e.message);}};
 async function auth(){
   const state=await api('/api/auth/status');signedIn=state.authenticated;setup=!state.configured;
-  $('auth').hidden=signedIn;$('dashboard').hidden=!signedIn;$('logout').hidden=!signedIn;$('benchLink').hidden=!signedIn;
-  $('voicesLink').hidden=!signedIn;$('queriesLink').hidden=!signedIn;$('homeAssistantLink').hidden=!signedIn;$('trainingLink').hidden=!signedIn;$('modelsLink').hidden=!signedIn;
+  $('auth').hidden=signedIn;$('dashboard').hidden=!signedIn;$('logout').hidden=!signedIn;
   $('authTitle').textContent=setup?'Create your local account':'Welcome back';
   $('authHelp').textContent=setup?(state.setup_local?'Choose an administrator password of at least 12 characters. It stays on this headend.':'Create the first account through a local connection or SSH tunnel to http://127.0.0.1:8765.'):'Sign in to send pages and review incoming speech.';
   $('password').minLength=setup?12:1;$('password').autocomplete=setup?'new-password':'current-password';$('login').textContent=setup?'Create account':'Sign in';
@@ -131,7 +130,7 @@ async function recordVoice(){
     recorder.start();$('recordVoice').textContent='■ Stop recording';recordClock=setInterval(()=>{const seconds=(Date.now()-started)/1000;$('recordTimer').textContent=`Recording ${seconds.toFixed(1)} / 15 sec`;if(seconds>=15)stopRecording();},100);selection();
   }catch(e){recordStream.getTracks().forEach(t=>t.stop());recordStream=null;recorder=null;throw e;}
 }
-$('loginForm').onsubmit=guard(async e=>{e.preventDefault();$('login').disabled=true;try{await post(setup?'/api/auth/setup':'/api/auth/login',{username:$('username').value,password:$('password').value});$('password').value='';notice();await auth();const next=new URLSearchParams(location.search).get('next');if(['/voices','/bench','/queries','/home-assistant','/training','/models'].includes(next))location.assign(next);}finally{$('login').disabled=false;}});
+$('loginForm').onsubmit=guard(async e=>{e.preventDefault();$('login').disabled=true;try{await post(setup?'/api/auth/setup':'/api/auth/login',{username:$('username').value,password:$('password').value});$('password').value='';notice();await auth();const next=new URLSearchParams(location.search).get('next');if(['/voices','/bench','/queries','/home-assistant','/training','/models','/cameras','/map'].includes(next))location.assign(next);}finally{$('login').disabled=false;}});
 $('logout').onclick=guard(async()=>{stopRecording();await post('/api/auth/logout');signedIn=false;await auth();});
 $('textTab').onclick=()=>tab('text');$('voiceTab').onclick=()=>tab('voice');$('message').oninput=selection;
 $('selectAll').onclick=()=>{for(const unit of fleet.units)if(unit.online)selected.add(unit.id);unitSignature='';units();selection();};

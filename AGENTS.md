@@ -100,8 +100,9 @@ Other wake transcripts route through five deterministic stages before touching t
 | Directory / File | Responsibility |
 | --- | --- |
 | `headend/server.py` | FastAPI app factory, TrustedHost/Origin CSRF middleware, `/api/health`, `/bench` clip routes, static UI routes |
-| `headend/system_monitor.py` | Five-second cached host CPU/memory and data-drive usage for the Monitor Map; authenticated `/api/system/resources` |
-| `headend/map_lights.py` | Persistent HA-origin-scoped light placements in sample-map rooms; authenticated `/api/map/lights`, cached live state, no device actions; see `docs/MAP_LIGHTS.md` |
+| `headend/system_monitor.py` | Five-second cached host CPU/memory and data-drive usage on Home; authenticated `/api/system/resources` |
+| `headend/map_lights.py` | Persistent HA-origin-scoped light markers for `/map`, fallback geometry, outdoor bands, live status and bounded light controls; see `docs/MAP_LIGHTS.md` |
+| `headend/map_layout.py` | Optional private PNG and polygon room configuration in ignored `headend/data/maps/`; authenticated artwork access; setup is manual, with image upload and guided layout JSON creation unfinished |
 | `headend/fleet.py` | Auth/setup/login, unit pairing, `/poll`, `/audio` streaming receiver, `/api/pages/*`, 5-stage `transcription_done` router |
 | `headend/state.py` | SQLite schema & thread-safe helpers for `units`, `users`, `logins`, and `pages` |
 | `headend/timers.py` | Spoken/numeric duration parser, SQLite `timers` persistence, `/poll` reconciliation, `/api/timers` routes |
